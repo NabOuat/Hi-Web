@@ -57,7 +57,17 @@ import traceback
 
 # Configuration des chemins
 base_dir = os.path.dirname(os.path.abspath(__file__))
-poppler_path = os.path.join(base_dir, 'tools', 'popplerLibrary', 'bin')
+app = Flask(__name__)
+
+# Load environment variables
+load_dotenv()
+
+# Configuration de Poppler
+poppler_path = os.getenv('POPPLER_PATH')
+if not poppler_path:
+    # Fallback sur le chemin par défaut si la variable d'environnement n'est pas définie
+    poppler_path = os.path.join(base_dir, 'tools', 'popplerLibrary', 'bin')
+
 if os.path.exists(poppler_path):
     os.environ['PATH'] = f"{poppler_path};{os.environ['PATH']}"
     logger = logging.getLogger(__name__)
@@ -66,13 +76,9 @@ else:
     logger = logging.getLogger(__name__)
     logger.warning(f"Poppler non trouvé dans: {poppler_path}")
 
-# Load environment variables
-load_dotenv()
-
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 
-app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'hiconvert_secret_key_2024')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
@@ -2825,7 +2831,6 @@ def export_users():
 @login_required
 @role_required(['admin'])
 def get_admin_files():
-    """Récupère la liste des fichiers pour le dashboard admin"""
     try:
         # Récupérer l'ID du répertoire de l'admin
         admin_directory = supabase.table('user_access')\
@@ -3267,4 +3272,3 @@ if __name__ == '__main__':
     init_supabase_storage()
     
     app.run(debug=True, host='0.0.0.0', port=5000)
-
