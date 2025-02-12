@@ -3,6 +3,29 @@ const selectedFiles = new Map();
 const processedResults = new Map();
 let processing = false;
 
+// Fonction pour afficher un message
+function showMessage(message, type = 'info') {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.setAttribute('role', 'alert');
+    
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    if (container) {
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 150);
+        }, 5000);
+    }
+}
+
 // Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     // Charger les statistiques initiales
@@ -314,255 +337,53 @@ function formatProcessingTime(startTime) {
     return `${Math.round(elapsed / 1000)}s`;
 }
 
-// Afficher un message
-function showMessage(message, type = 'info') {
-    // Créer le toast
-    const toast = document.createElement('div');
-    toast.className = `toast align-items-center text-white bg-${type} border-0`;
-    toast.setAttribute('role', 'alert');
-    toast.setAttribute('aria-live', 'assertive');
-    toast.setAttribute('aria-atomic', 'true');
-    
-    toast.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">${message}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-    `;
-    
-    // Ajouter à la page
-    const container = document.getElementById('toast-container') || document.body;
-    container.appendChild(toast);
-    
-    // Afficher le toast
-    const bsToast = new bootstrap.Toast(toast);
-    bsToast.show();
-    
-    // Supprimer après la fermeture
-    toast.addEventListener('hidden.bs.toast', () => {
-        toast.remove();
-    });
-}
-
-// Initialisation des tooltips
-function initializeTooltips() {
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-}
-
-// Initialisation de la zone de drop
-function initializeDropZone() {
-    const dropZone = document.querySelector('.upload-zone');
-    const folderInput = document.getElementById('folderInput');
-
-    if (dropZone && folderInput) {
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => {
-                dropZone.classList.add('border-primary');
-                dropZone.classList.add('bg-primary-subtle');
-            }, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => {
-                dropZone.classList.remove('border-primary');
-                dropZone.classList.remove('bg-primary-subtle');
-            }, false);
-        });
-
-        dropZone.addEventListener('drop', handleDrop, false);
-        folderInput.addEventListener('change', handleFolderSelection);
-    }
-}
-
-// Initialisation des filtres
-function initializeFilters() {
-    const searchInput = document.getElementById('searchInput');
-    const statusFilter = document.getElementById('statusFilter');
-
-    if (searchInput) {
-        searchInput.addEventListener('input', updateFilters);
-    }
-
-    if (statusFilter) {
-        statusFilter.addEventListener('change', updateFilters);
-    }
-}
-
-// Mise à jour des filtres
-function updateFilters() {
-    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
-    const statusFilter = document.getElementById('statusFilter')?.value || 'all';
-    updateTable(searchTerm, statusFilter);
-}
-
-// Empêcher le comportement par défaut
-function preventDefaults(e) {
-    e.preventDefault();
-    e.stopPropagation();
-}
-
-// Gestion du drop
-function handleDrop(e) {
-    const items = e.dataTransfer.items;
-    if (items) {
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item.kind === 'file' && item.webkitGetAsEntry) {
-                const entry = item.webkitGetAsEntry();
-                if (entry.isDirectory) {
-                    processDirectory(entry);
-                }
-            }
-        }
-    }
-}
-
-// Traitement d'un dossier
-async function processDirectory(entry) {
-    const files = await readDirectoryEntries(entry);
-    handleFiles(files);
-}
-
-// Lecture récursive des entrées d'un dossier
-async function readDirectoryEntries(entry) {
-    const files = [];
-    const reader = entry.createReader();
-
-    const readEntries = () => {
-        return new Promise((resolve, reject) => {
-            reader.readEntries(entries => {
-                if (!entries.length) {
-                    resolve([]);
-                } else {
-                    Promise.all(entries.map(entry => {
-                        if (entry.isFile) {
-                            return new Promise(resolve => {
-                                entry.file(file => {
-                                    file.relativePath = entry.fullPath;
-                                    resolve(file);
-                                });
-                            });
-                        } else if (entry.isDirectory) {
-                            return readDirectoryEntries(entry);
-                        }
-                    })).then(resolve);
-                }
-            }, reject);
-        });
-    };
-
-    let entries = [];
-    let results;
-    do {
-        results = await readEntries();
-        entries = entries.concat(results);
-    } while (results.length > 0);
-
-    return entries.flat();
-}
-
-// Gestion de la sélection de dossier
-function handleFolderSelection(event) {
-    const files = Array.from(event.target.files);
-    handleFiles(files);
-}
-
-// Téléchargement des fichiers
-async function downloadFile(fileId, type) {
-    try {
-        console.log(`Téléchargement du fichier ${fileId} de type ${type}`);
-        const response = await fetch(`/api/files/${fileId}/download?type=${type}`, {
-            method: 'GET',
-            headers: {
-                'Accept': type === 'csv' ? 'text/csv' : 'application/pdf',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            credentials: 'same-origin'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Erreur HTTP: ${response.status}`);
-        }
-
-        // Récupérer le nom du fichier depuis l'en-tête Content-Disposition
-        const contentDisposition = response.headers.get('Content-Disposition');
-        const filename = contentDisposition
-            ? contentDisposition.split('filename=')[1].replace(/"/g, '')
-            : `file.${type}`;
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
-        console.log(`Téléchargement réussi pour ${filename}`);
-    } catch (error) {
-        console.error('Erreur lors du téléchargement:', error);
-        showMessage(`Erreur lors du téléchargement du fichier ${type.toUpperCase()}: ${error.message}`, 'error');
-    }
-}
-
-// Fonction pour télécharger les deux fichiers
-async function downloadBoth(fileId) {
-    try {
-        await downloadFile(fileId, 'pdf');
-        setTimeout(async () => {
-            await downloadFile(fileId, 'csv');
-        }, 1000); // Attendre 1 seconde entre les téléchargements
-    } catch (error) {
-        console.error('Erreur lors du téléchargement:', error);
-        showMessage('Erreur lors du téléchargement des fichiers', 'error');
-    }
-}
-
-// Fonction pour télécharger uniquement le PDF
-async function downloadPDF(fileId) {
-    await downloadFile(fileId, 'pdf');
-}
-
-// Fonction pour télécharger uniquement le CSV
-async function downloadCSV(fileId) {
-    await downloadFile(fileId, 'csv');
-}
-
 // Charger les statistiques utilisateur
 async function loadProfileAndStats() {
     try {
         const response = await fetch('/api/stats/user');
         if (!response.ok) {
-            throw new Error('Erreur lors du chargement des statistiques');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erreur lors du chargement des statistiques');
         }
         
         const stats = await response.json();
         
         // Mettre à jour l'interface avec les statistiques
-        document.getElementById('processed_files').textContent = stats.processed_files || 0;
-        document.getElementById('error_files').textContent = stats.error_files || 0;
-        document.getElementById('pending_files').textContent = stats.pending_files || 0;
+        document.getElementById('total_files').textContent = stats.total_files || '0';
+        document.getElementById('successful_files').textContent = stats.successful_files || '0';
+        document.getElementById('success_rate').textContent = `${stats.success_rate || 0}%`;
+        document.getElementById('points').textContent = stats.points || '0';
         
-        // Calculer et afficher le taux de succès
-        const successRate = stats.success_rate || 0;
-        document.getElementById('success_rate').textContent = `${successRate.toFixed(1)}%`;
+        // Mettre à jour l'historique des actions si présent
+        const historyList = document.getElementById('activity_history');
+        if (historyList && stats.recent_actions) {
+            historyList.innerHTML = stats.recent_actions
+                .map(action => `<li class="list-group-item">${action.action} - ${new Date(action.created_at).toLocaleString()}</li>`)
+                .join('');
+        }
         
     } catch (error) {
         console.error('Erreur lors du chargement des statistiques:', error);
-        document.getElementById('processed_files').textContent = '0';
-        document.getElementById('error_files').textContent = '0';
-        document.getElementById('pending_files').textContent = '0';
-        document.getElementById('success_rate').textContent = '0.0%';
+        showMessage('Erreur lors du chargement des statistiques. Veuillez rafraîchir la page.', 'danger');
+        
+        // Mettre des valeurs par défaut
+        ['total_files', 'successful_files', 'points'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = '0';
+        });
+        
+        const successRate = document.getElementById('success_rate');
+        if (successRate) successRate.textContent = '0%';
+        
+        const historyList = document.getElementById('activity_history');
+        if (historyList) {
+            historyList.innerHTML = '<li class="list-group-item">Aucune activité récente</li>';
+        }
+        
+        // Si c'est une erreur d'authentification, rediriger vers la page de connexion
+        if (error.status === 401) {
+            window.location.href = '/login';
+        }
     }
 }
 
@@ -694,6 +515,305 @@ function updateStats(processed, errors, pending) {
         const rate = (processed / total) * 100;
         successRateElement.textContent = `${rate.toFixed(1)}%`;
     }
+}
+
+// Polling interval for file status updates (in milliseconds)
+const POLLING_INTERVAL = 5000;
+const MAX_RETRIES = 120; // 10 minutes maximum polling time
+
+// Map to track polling for each file
+const pollingMap = new Map();
+
+// Start polling for file status
+function startPolling(fileId) {
+    if (pollingMap.has(fileId)) {
+        return;
+    }
+    
+    let retryCount = 0;
+    const intervalId = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/files/${fileId}`);
+            if (!response.ok) {
+                throw new Error('Erreur lors de la récupération du statut');
+            }
+            
+            const fileData = await response.json();
+            
+            // Update UI with new status
+            updateFileStatus(fileId, fileData);
+            
+            // Stop polling if file is no longer processing
+            if (fileData.status !== 'processing') {
+                stopPolling(fileId);
+                
+                // Show appropriate message
+                if (fileData.status === 'error') {
+                    showMessage(`Erreur lors du traitement: ${fileData.error_message || 'Une erreur est survenue'}`, 'danger');
+                } else if (fileData.status === 'success') {
+                    showMessage('Traitement terminé avec succès', 'success');
+                }
+            }
+            
+            // Stop if max retries reached
+            if (++retryCount >= MAX_RETRIES) {
+                stopPolling(fileId);
+                showMessage('Le traitement du fichier prend plus de temps que prévu', 'warning');
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors du polling:', error);
+            stopPolling(fileId);
+        }
+    }, POLLING_INTERVAL);
+    
+    pollingMap.set(fileId, intervalId);
+}
+
+// Stop polling for file status
+function stopPolling(fileId) {
+    const intervalId = pollingMap.get(fileId);
+    if (intervalId) {
+        clearInterval(intervalId);
+        pollingMap.delete(fileId);
+    }
+}
+
+// Update file status in UI
+function updateFileStatus(fileId, fileData) {
+    const statusCell = document.querySelector(`#file-${fileId} .status`);
+    if (statusCell) {
+        const badge = document.createElement('span');
+        badge.className = `badge ${getBadgeColor(fileData.status)}`;
+        badge.textContent = getStatusText(fileData.status);
+        
+        statusCell.innerHTML = '';
+        statusCell.appendChild(badge);
+        
+        // Update points if available
+        const pointsCell = document.querySelector(`#file-${fileId} .points`);
+        if (pointsCell && fileData.points !== null) {
+            pointsCell.textContent = fileData.points;
+        }
+        
+        // Update processed time if available
+        const timeCell = document.querySelector(`#file-${fileId} .time`);
+        if (timeCell && fileData.processed_at) {
+            const processedAt = new Date(fileData.processed_at);
+            timeCell.textContent = processedAt.toLocaleString();
+        }
+    }
+}
+
+// Handle file upload response
+async function handleUploadResponse(response) {
+    const data = await response.json();
+    
+    if (response.ok) {
+        showMessage('Fichier envoyé avec succès', 'success');
+        startPolling(data.file_id);
+    } else if (response.status === 409) {
+        showMessage('Ce fichier est déjà en cours de traitement', 'warning');
+        startPolling(data.file_id);
+    } else {
+        showMessage(`Erreur: ${data.error}`, 'danger');
+    }
+    
+    return data;
+}
+
+// Téléchargement des fichiers
+async function downloadFile(fileId, type) {
+    try {
+        console.log(`Téléchargement du fichier ${fileId} de type ${type}`);
+        const response = await fetch(`/api/files/${fileId}/download?type=${type}`, {
+            method: 'GET',
+            headers: {
+                'Accept': type === 'csv' ? 'text/csv' : 'application/pdf',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+
+        // Récupérer le nom du fichier depuis l'en-tête Content-Disposition
+        const contentDisposition = response.headers.get('Content-Disposition');
+        const filename = contentDisposition
+            ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+            : `file.${type}`;
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        console.log(`Téléchargement réussi pour ${filename}`);
+    } catch (error) {
+        console.error('Erreur lors du téléchargement:', error);
+        showMessage(`Erreur lors du téléchargement du fichier ${type.toUpperCase()}: ${error.message}`, 'error');
+    }
+}
+
+// Fonction pour télécharger les deux fichiers
+async function downloadBoth(fileId) {
+    try {
+        await downloadFile(fileId, 'pdf');
+        setTimeout(async () => {
+            await downloadFile(fileId, 'csv');
+        }, 1000); // Attendre 1 seconde entre les téléchargements
+    } catch (error) {
+        console.error('Erreur lors du téléchargement:', error);
+        showMessage('Erreur lors du téléchargement des fichiers', 'error');
+    }
+}
+
+// Fonction pour télécharger uniquement le PDF
+async function downloadPDF(fileId) {
+    await downloadFile(fileId, 'pdf');
+}
+
+// Fonction pour télécharger uniquement le CSV
+async function downloadCSV(fileId) {
+    await downloadFile(fileId, 'csv');
+}
+
+// Initialisation des tooltips
+function initializeTooltips() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+}
+
+// Initialisation de la zone de drop
+function initializeDropZone() {
+    const dropZone = document.querySelector('.upload-zone');
+    const folderInput = document.getElementById('folderInput');
+
+    if (dropZone && folderInput) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('border-primary');
+                dropZone.classList.add('bg-primary-subtle');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('border-primary');
+                dropZone.classList.remove('bg-primary-subtle');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        folderInput.addEventListener('change', handleFolderSelection);
+    }
+}
+
+// Initialisation des filtres
+function initializeFilters() {
+    const searchInput = document.getElementById('searchInput');
+    const statusFilter = document.getElementById('statusFilter');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', updateFilters);
+    }
+
+    if (statusFilter) {
+        statusFilter.addEventListener('change', updateFilters);
+    }
+}
+
+// Mise à jour des filtres
+function updateFilters() {
+    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+    const statusFilter = document.getElementById('statusFilter')?.value || 'all';
+    updateTable(searchTerm, statusFilter);
+}
+
+// Empêcher le comportement par défaut
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// Gestion du drop
+function handleDrop(e) {
+    const items = e.dataTransfer.items;
+    if (items) {
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.kind === 'file' && item.webkitGetAsEntry) {
+                const entry = item.webkitGetAsEntry();
+                if (entry.isDirectory) {
+                    processDirectory(entry);
+                }
+            }
+        }
+    }
+}
+
+// Traitement d'un dossier
+async function processDirectory(entry) {
+    const files = await readDirectoryEntries(entry);
+    handleFiles(files);
+}
+
+// Lecture récursive des entrées d'un dossier
+async function readDirectoryEntries(entry) {
+    const files = [];
+    const reader = entry.createReader();
+
+    const readEntries = () => {
+        return new Promise((resolve, reject) => {
+            reader.readEntries(entries => {
+                if (!entries.length) {
+                    resolve([]);
+                } else {
+                    Promise.all(entries.map(entry => {
+                        if (entry.isFile) {
+                            return new Promise(resolve => {
+                                entry.file(file => {
+                                    file.relativePath = entry.fullPath;
+                                    resolve(file);
+                                });
+                            });
+                        } else if (entry.isDirectory) {
+                            return readDirectoryEntries(entry);
+                        }
+                    })).then(resolve);
+                }
+            }, reject);
+        });
+    };
+
+    let entries = [];
+    let results;
+    do {
+        results = await readEntries();
+        entries = entries.concat(results);
+    } while (results.length > 0);
+
+    return entries.flat();
+}
+
+// Gestion de la sélection de dossier
+function handleFolderSelection(event) {
+    const files = Array.from(event.target.files);
+    handleFiles(files);
 }
 
 // Ajout du style CSS pour l'animation du bouton

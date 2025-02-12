@@ -2,7 +2,7 @@ import os
 import multiprocessing
 
 # Server socket
-bind = f"0.0.0.0:{int(os.environ.get('PORT', 10000))}"
+# Note: bind is now set via command line argument
 backlog = 2048
 
 # Worker processes
@@ -44,7 +44,6 @@ group = None
 tmp_upload_dir = None
 
 # SSL configuration
-ssl_version = 'TLS'
 cert_reqs = 0  # ssl.CERT_NONE
 
 def worker_int(worker):

@@ -62,6 +62,24 @@ app = Flask(__name__)
 # Load environment variables
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize Supabase client with error handling
+try:
+    supabase_url = os.environ.get('SUPABASE_URL')
+    supabase_key = os.environ.get('SUPABASE_KEY')
+    
+    if not supabase_url or not supabase_key:
+        raise ValueError("Supabase configuration missing")
+        
+    supabase: Client = create_client(supabase_url, supabase_key)
+    logger.info("Supabase client initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Supabase client: {str(e)}")
+    raise
+
 # Configuration de Poppler
 poppler_path = os.getenv('POPPLER_PATH')
 if not poppler_path:
@@ -70,17 +88,9 @@ if not poppler_path:
 
 if os.path.exists(poppler_path):
     os.environ['PATH'] = f"{poppler_path};{os.environ['PATH']}"
-    logger = logging.getLogger(__name__)
     logger.info(f"Poppler ajouté au PATH: {poppler_path}")
 else:
-    logger = logging.getLogger(__name__)
     logger.warning(f"Poppler non trouvé dans: {poppler_path}")
-
-# Configuration du logging
-logging.basicConfig(level=logging.INFO)
-
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'hiconvert_secret_key_2024')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
 # Configuration des dossiers
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'uploads')
@@ -93,26 +103,10 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 print(f"Dossier d'upload: {app.config['UPLOAD_FOLDER']}")
 print(f"Dossier de sortie: {app.config['OUTPUT_FOLDER']}")
 
-# Configuration de Supabase
-url = os.getenv('SUPABASE_URL')
-key = os.getenv('SUPABASE_KEY')
-supabase: Client = create_client(url, key)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'hiconvert_secret_key_2024')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
-# Initialize Supabase client
-try:
-    if not url or not key:
-        raise ValueError("Supabase URL or Key not found in environment variables")
-    
-    logger.info("Supabase client initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize Supabase client: {str(e)}")
-    raise
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-# Security middleware
+# Configure CORS and security headers
 @app.after_request
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -125,15 +119,27 @@ def add_security_headers(response):
 @app.errorhandler(404)
 def not_found_error(error):
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'Resource not found'}), 404
+        return jsonify({'error': 'Resource not found', 'status': 404}), 404
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': 'Internal server error', 'status': 500, 'details': str(error)}), 500
     return render_template('500.html'), 500
+
+@app.errorhandler(401)
+def unauthorized_error(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Unauthorized', 'status': 401}), 401
+    return redirect(url_for('login'))
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Forbidden', 'status': 403}), 403
+    return render_template('403.html'), 403
 
 # Login decorator with improved session security
 def login_required(f):
@@ -141,19 +147,8 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             if request.path.startswith('/api/'):
-                return jsonify({'error': 'Authentication required'}), 401
+                return jsonify({'error': 'Session expired', 'status': 401}), 401
             return redirect(url_for('login'))
-            
-        # Vérifier la validité de la session
-        if 'last_activity' not in session:
-            session['last_activity'] = time.time()
-        elif time.time() - session['last_activity'] > 3600:  # 1 heure
-            session.clear()
-            if request.path.startswith('/api/'):
-                return jsonify({'error': 'Session expired'}), 401
-            return redirect(url_for('login'))
-            
-        session['last_activity'] = time.time()
         return f(*args, **kwargs)
     return decorated_function
 
@@ -168,7 +163,7 @@ def role_required(roles):
             user_role = session.get('role')
             if not user_role or user_role not in roles:
                 if request.path.startswith('/api/'):
-                    return jsonify({'error': 'Accès non autorisé'}), 403
+                    return jsonify({'error': 'Accès non autorisé', 'status': 403}), 403
                 return render_template('403.html'), 403
             return f(*args, **kwargs)
         return decorated_function
@@ -1791,6 +1786,7 @@ def check_file_access(file_id):
         return False
 
 @app.route('/api/files/upload', methods=['POST'])
+@login_required
 def upload_file():
     try:
         if 'file' not in request.files:
@@ -2085,37 +2081,49 @@ def get_user_stats():
         user_id = session.get('user_id')
         
         # Récupérer les statistiques des fichiers
-        files = supabase.table('files')\
-            .select('status, points')\
-            .eq('user_id', user_id)\
-            .execute()
+        try:
+            files = supabase.table('files')\
+                .select('status, points')\
+                .eq('user_id', user_id)\
+                .execute()
+        except Exception as e:
+            logger.error(f"Supabase error getting files: {str(e)}")
+            return jsonify({'error': 'Database error', 'status': 500}), 500
             
         # Calculer les statistiques
-        total_files = len(files.data)
-        successful_files = len([f for f in files.data if f['status'] == 'success'])
+        total_files = len(files.data) if hasattr(files, 'data') else 0
+        successful_files = len([f for f in files.data if f.get('status') == 'success']) if hasattr(files, 'data') else 0
         success_rate = (successful_files / total_files * 100) if total_files > 0 else 0
         
         # Récupérer l'historique des actions
-        history = supabase.table('activity_log')\
-            .select('action, created_at')\
-            .eq('user_id', user_id)\
-            .order('created_at', desc=True)\
-            .limit(10)\
-            .execute()
+        try:
+            history = supabase.table('activity_log')\
+                .select('action, created_at')\
+                .eq('user_id', user_id)\
+                .order('created_at', desc=True)\
+                .limit(10)\
+                .execute()
+        except Exception as e:
+            logger.error(f"Supabase error getting history: {str(e)}")
+            history = type('obj', (object,), {'data': []})
             
         stats = {
             'total_files': total_files,
             'successful_files': successful_files,
             'success_rate': round(success_rate, 2),
-            'points': sum(f['points'] or 0 for f in files.data),  # Ajout de "or 0" pour gérer les None
-            'recent_actions': history.data if history.data else []
+            'points': sum(f.get('points', 0) or 0 for f in (files.data or [])),
+            'recent_actions': history.data if hasattr(history, 'data') else []
         }
         
         return jsonify(stats), 200
         
     except Exception as e:
-        print(f"Erreur lors de la récupération des statistiques: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error getting user stats: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'status': 500,
+            'details': str(e)
+        }), 500
 
 @app.route('/api/users/me/password', methods=['PUT'])
 @login_required
@@ -2155,7 +2163,7 @@ def log_user_action(user_id, action, details=None):
             'user_id': user_id,
             'action': action,
             'details': details,
-            'created_at': datetime.now().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
         
         supabase.table('activity_log').insert(action_data).execute()
@@ -2572,7 +2580,7 @@ def upload_csv_to_supabase(file_id, csv_data, user_id, folder_name):
         return result
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'upload du CSV vers Supabase: {str(e)}")
+        logger.error(f"Erreur lors de l'upload du CSV: {str(e)}")
         raise Exception(f"Erreur lors de l'upload du CSV: {str(e)}")
 
 def upload_pdf_to_supabase(file_id, pdf_data, user_id, folder_name):
@@ -2595,7 +2603,7 @@ def upload_pdf_to_supabase(file_id, pdf_data, user_id, folder_name):
         return result
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'upload du PDF vers Supabase: {str(e)}")
+        logger.error(f"Erreur lors de l'upload du PDF: {str(e)}")
         raise Exception(f"Erreur lors de l'upload du PDF: {str(e)}")
 
 def download_csv_from_supabase(file_id, user_id, folder_name):
@@ -3311,8 +3319,114 @@ if __name__ == '__main__':
     # Initialiser le stockage Supabase au démarrage
     init_supabase_storage()
     
-    # Configuration du port pour Render
+    # Configure port for development server
     port = int(os.environ.get('PORT', 10000))
-    print(f"Starting server on port {port}")
-    app.logger.info(f"Starting server on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    app.logger.info(f"Starting development server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+def cleanup_stuck_files():
+    """Cleanup files that have been stuck in processing state for too long"""
+    try:
+        # Get files stuck in processing for more than 10 minutes
+        stuck_files = supabase.table('files')\
+            .select('id')\
+            .eq('status', 'processing')\
+            .lt('created_at', (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat())\
+            .execute()
+            
+        if not stuck_files.data:
+            return
+            
+        # Update status to error for stuck files
+        file_ids = [f['id'] for f in stuck_files.data]
+        supabase.table('files')\
+            .update({
+                'status': 'error',
+                'error_message': 'Le traitement a expiré',
+                'processed_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .in_('id', file_ids)\
+            .execute()
+            
+        logger.info(f"Cleaned up {len(file_ids)} stuck files")
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up stuck files: {str(e)}")
+
+@app.before_request
+def before_request():
+    """Run cleanup before each request"""
+    if random.random() < 0.1:  # Run cleanup ~10% of the time
+        cleanup_stuck_files()
+
+@app.route('/api/files/upload', methods=['POST'])
+@login_required
+def upload_file():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Aucun fichier fourni'}), 400
+            
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({'error': 'Nom de fichier invalide'}), 400
+            
+        # Check if same file is already being processed
+        existing_file = supabase.table('files')\
+            .select('id, status, created_at')\
+            .eq('user_id', session['user_id'])\
+            .eq('name', secure_filename(file.filename))\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+            
+        if existing_file.data:
+            latest_file = existing_file.data[0]
+            # If file is processing and less than 10 minutes old
+            if latest_file['status'] == 'processing' and \
+               (datetime.now(timezone.utc) - datetime.fromisoformat(latest_file['created_at'])).total_seconds() < 600:
+                return jsonify({
+                    'error': 'Ce fichier est déjà en cours de traitement',
+                    'file_id': latest_file['id']
+                }), 409
+        
+        # Save file and create database entry
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        # Create unique filename if needed
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(file_path):
+            filename = f"{base}_{counter}{ext}"
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            counter += 1
+            
+        file.save(file_path)
+        
+        # Create database entry
+        file_entry = {
+            'name': filename,
+            'status': 'processing',
+            'user_id': session['user_id'],
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        result = supabase.table('files').insert(file_entry).execute()
+        
+        if not result.data:
+            os.remove(file_path)
+            return jsonify({'error': 'Erreur lors de l\'enregistrement du fichier'}), 500
+            
+        file_id = result.data[0]['id']
+        
+        # Start processing in background
+        Thread(target=process_file, args=(file_id, file_path)).start()
+        
+        return jsonify({
+            'message': 'Fichier reçu et en cours de traitement',
+            'file_id': file_id
+        }), 202
+        
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
