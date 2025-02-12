@@ -6,20 +6,20 @@ bind = f"0.0.0.0:{int(os.environ.get('PORT', 10000))}"
 backlog = 2048
 
 # Worker processes
-workers = int(os.environ.get('WEB_CONCURRENCY', 2))  # Réduit pour éviter la surcharge mémoire
+workers = int(os.environ.get('WEB_CONCURRENCY', 2))
 worker_class = 'sync'
 threads = int(os.environ.get('PYTHON_MAX_THREADS', 1))
 worker_connections = 1000
 
 # Timeouts
-timeout = 600  # 10 minutes pour les gros fichiers
-graceful_timeout = 300
+timeout = 600  # 10 minutes for large files
+graceful_timeout = 120
 keepalive = 5
 
 # Memory management
-max_requests = 100  # Redémarrer les workers plus souvent
-max_requests_jitter = 10
-worker_tmp_dir = '/dev/shm'  # Utiliser la mémoire pour les fichiers temporaires
+max_requests = 1000
+max_requests_jitter = 50
+worker_tmp_dir = '/tmp'  # Changed from /dev/shm for better compatibility
 
 # Logging
 accesslog = '-'
@@ -35,7 +35,7 @@ proc_name = 'hi-web-gunicorn'
 reload = os.environ.get('FLASK_ENV') == 'development'
 
 # Server mechanics
-preload_app = True
+preload_app = False  # Changed to False to prevent memory issues
 daemon = False
 pidfile = None
 umask = 0

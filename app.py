@@ -597,48 +597,39 @@ def download_file(file_id):
             logger.error(f"Le fichier {file_id} n'a pas été traité avec succès. Status: {file_info.get('status')}")
             return jsonify({'error': 'Le fichier n\'a pas été traité avec succès'}), 400
             
-        # Récupérer le type de fichier demandé (pdf ou csv)
-        file_type = request.args.get('type', 'csv')
-        logger.info(f"Type de fichier demandé: {file_type}")
-        
-        try:
-            if file_type == 'csv':
-                bucket_name = 'csv'
-                file_path = f"{user_id}/coordinates/{file_id}/coordinates_{file_id}.csv"
-                mime_type = 'text/csv'
-                download_name = f"coordinates_{file_id}.csv"
-            else:
-                bucket_name = 'files'
-                file_path = f"{user_id}/uploads/{file_id}.pdf"
-                mime_type = 'application/pdf'
-                download_name = file_info['name']
-                
-            logger.info(f"Tentative de téléchargement depuis le bucket {bucket_name}: {file_path}")
-            file_data = supabase.storage.from_(bucket_name).download(file_path)
+        # Construire le chemin du fichier CSV
+        output_dir = file_info.get('output_dir')
+        if not output_dir:
+            print("Dossier de sortie manquant dans la base de données")
+            return jsonify({'error': 'Informations du fichier incomplètes'}), 500
             
+        csv_path = os.path.join(output_dir, f"{file_id}.csv")
+        print(f"Chemin du fichier CSV: {csv_path}")
+        
+        if not os.path.exists(csv_path):
+            print(f"Fichier CSV non trouvé: {csv_path}")
+            # Lister les fichiers dans le dossier
+            if os.path.exists(output_dir):
+                files = os.listdir(output_dir)
+                print(f"Fichiers dans le dossier {output_dir}: {files}")
+            return jsonify({'error': 'Fichier CSV non trouvé'}), 404
+            
+        try:
+            print(f"Envoi du fichier {csv_path}")
             return send_file(
-                io.BytesIO(file_data),
-                mimetype=mime_type,
+                csv_path,
+                mimetype='text/csv',
                 as_attachment=True,
-                download_name=download_name
+                download_name=f"coordinates_{file_id}.csv"
             )
             
         except Exception as e:
-            logger.error(f"Erreur lors du téléchargement depuis Supabase: {str(e)}")
+            print(f"Erreur lors de l'envoi du fichier: {str(e)}")
+            return jsonify({'error': 'Erreur lors de l\'envoi du fichier'}), 500
             
-            # Vérifier si le fichier existe dans le bucket
-            try:
-                files = supabase.storage.from_(bucket_name).list()
-                file_exists = any(f['name'] == file_path for f in files)
-                if not file_exists:
-                    raise Exception(f"Le fichier {file_path} n'existe pas dans le bucket {bucket_name}")
-            except Exception as e:
-                logger.error(f"Erreur lors de la vérification du fichier dans le bucket: {str(e)}")
-                return jsonify({"error": f"Fichier non trouvé dans le bucket {bucket_name}"}), 404
-                
     except Exception as e:
-        logger.error(f"Erreur lors du téléchargement: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Erreur lors du téléchargement: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/files/download-all', methods=['GET'])
 @login_required
@@ -3322,4 +3313,6 @@ if __name__ == '__main__':
     
     # Configuration du port pour Render
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    print(f"Starting server on port {port}")
+    app.logger.info(f"Starting server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
