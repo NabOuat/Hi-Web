@@ -54,6 +54,7 @@ import csv
 import pandas as pd
 import tempfile
 import traceback
+from threading import Thread
 
 # Configuration des chemins
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1800,56 +1801,89 @@ def upload_file():
             
         # Vérifier l'accès au répertoire
         if not check_directory_access(directory_id):
-            return jsonify({'error': 'Accès non autorisé à ce répertoire'}), 403
+            return jsonify({'error': 'Accès non autorisé au répertoire'}), 403
             
-        # Générer un nom de fichier unique
+        # Check if same file is already being processed
+        existing_file = supabase.table('files')\
+            .select('id, status, created_at')\
+            .eq('user_id', session['user_id'])\
+            .eq('name', secure_filename(file.filename))\
+            .eq('directory_id', directory_id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+            
+        if existing_file.data:
+            latest_file = existing_file.data[0]
+            # If file is processing and less than 10 minutes old
+            if latest_file['status'] == 'processing' and \
+               (datetime.now(timezone.utc) - datetime.fromisoformat(latest_file['created_at'])).total_seconds() < 600:
+                return jsonify({
+                    'error': 'Ce fichier est déjà en cours de traitement',
+                    'file_id': latest_file['id']
+                }), 409
+        
+        # Save file and create database entry
         filename = secure_filename(file.filename)
-        storage_path = f"{session.get('user_id')}/{directory_id}/{uuid.uuid4()}_{filename}"
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         
-        # Lire le contenu du fichier et obtenir sa taille
-        file_data = file.read()
-        file_size = len(file_data)
+        # Create unique filename if needed
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(file_path):
+            filename = f"{base}_{counter}{ext}"
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            counter += 1
+            
+        # Ensure upload directory exists
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
-        # Sauvegarder dans Supabase Storage
-        supabase.storage.from_('files').upload(storage_path, file_data)
+        try:
+            file.save(file_path)
+        except Exception as e:
+            logger.error(f"Error saving file: {str(e)}")
+            return jsonify({'error': 'Erreur lors de la sauvegarde du fichier'}), 500
         
-        # Créer l'entrée dans la base de données
+        # Create database entry
         file_entry = {
-            'filename': filename,
-            'file_size': file_size,
-            'mime_type': file.content_type,
+            'name': filename,
+            'status': 'processing',
+            'user_id': session['user_id'],
             'directory_id': directory_id,
-            'uploaded_by': session.get('user_id'),
-            'created_at': datetime.now(timezone.utc).isoformat(),
-            'updated_at': datetime.now(timezone.utc).isoformat(),
-            'original_path': storage_path,
-            'status': 'uploaded'
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
         
-        result = supabase.table('files').insert(file_entry).execute()
-        
-        if not result.data:
-            raise Exception("Erreur lors de l'insertion en base de données")
+        try:
+            result = supabase.table('files').insert(file_entry).execute()
             
-        # Enregistrer l'action d'upload
-        log_user_action(
-            user_id=session.get('user_id'),
-            action='file_upload',
-            details={
-                'filename': filename,
-                'file_size': file_size,
-                'directory_id': directory_id,
-                'file_id': result.data[0]['id']
-            }
-        )
-        
-        return jsonify({
-            'message': 'Fichier uploadé avec succès',
-            'file_id': result.data[0]['id']
-        }), 200
+            if not result.data:
+                os.remove(file_path)
+                return jsonify({'error': 'Erreur lors de l\'enregistrement du fichier'}), 500
+                
+            file_id = result.data[0]['id']
+            
+            # Log the action
+            log_user_action(
+                session['user_id'],
+                'upload_file',
+                f"Fichier '{filename}' uploadé dans le répertoire {directory_id}"
+            )
+            
+            # Start processing in background
+            Thread(target=process_file, args=(file_id, file_path)).start()
+            
+            return jsonify({
+                'message': 'Fichier reçu et en cours de traitement',
+                'file_id': file_id
+            }), 202
+            
+        except Exception as e:
+            os.remove(file_path)
+            logger.error(f"Database error: {str(e)}")
+            return jsonify({'error': 'Erreur lors de l\'enregistrement dans la base de données'}), 500
         
     except Exception as e:
-        print(f"Erreur lors de l'upload: {str(e)}")
+        logger.error(f"Error uploading file: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/files/<file_id>/process', methods=['POST'])
@@ -2091,8 +2125,8 @@ def get_user_stats():
             return jsonify({'error': 'Database error', 'status': 500}), 500
             
         # Calculer les statistiques
-        total_files = len(files.data) if hasattr(files, 'data') else 0
-        successful_files = len([f for f in files.data if f.get('status') == 'success']) if hasattr(files, 'data') else 0
+        total_files = len(files.data)
+        successful_files = len([f for f in files.data if f.get('status') == 'success'])
         success_rate = (successful_files / total_files * 100) if total_files > 0 else 0
         
         # Récupérer l'historique des actions
@@ -2575,7 +2609,7 @@ def upload_csv_to_supabase(file_id, csv_data, user_id, folder_name):
         
         # Upload le nouveau fichier
         result = supabase.storage.from_('csv').upload(file_path, csv_data)
-        logger.info(f"Fichier CSV uploadé avec succès: {file_path}")
+        logger.info(f"Fichier CSV uploadé vers Supabase bucket 'csv': {file_path}")
         
         return result
         
@@ -3358,75 +3392,3 @@ def before_request():
     """Run cleanup before each request"""
     if random.random() < 0.1:  # Run cleanup ~10% of the time
         cleanup_stuck_files()
-
-@app.route('/api/files/upload', methods=['POST'])
-@login_required
-def upload_file():
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'Aucun fichier fourni'}), 400
-            
-        file = request.files['file']
-        if not file or not file.filename:
-            return jsonify({'error': 'Nom de fichier invalide'}), 400
-            
-        # Check if same file is already being processed
-        existing_file = supabase.table('files')\
-            .select('id, status, created_at')\
-            .eq('user_id', session['user_id'])\
-            .eq('name', secure_filename(file.filename))\
-            .order('created_at', desc=True)\
-            .limit(1)\
-            .execute()
-            
-        if existing_file.data:
-            latest_file = existing_file.data[0]
-            # If file is processing and less than 10 minutes old
-            if latest_file['status'] == 'processing' and \
-               (datetime.now(timezone.utc) - datetime.fromisoformat(latest_file['created_at'])).total_seconds() < 600:
-                return jsonify({
-                    'error': 'Ce fichier est déjà en cours de traitement',
-                    'file_id': latest_file['id']
-                }), 409
-        
-        # Save file and create database entry
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        
-        # Create unique filename if needed
-        base, ext = os.path.splitext(filename)
-        counter = 1
-        while os.path.exists(file_path):
-            filename = f"{base}_{counter}{ext}"
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            counter += 1
-            
-        file.save(file_path)
-        
-        # Create database entry
-        file_entry = {
-            'name': filename,
-            'status': 'processing',
-            'user_id': session['user_id'],
-            'created_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        result = supabase.table('files').insert(file_entry).execute()
-        
-        if not result.data:
-            os.remove(file_path)
-            return jsonify({'error': 'Erreur lors de l\'enregistrement du fichier'}), 500
-            
-        file_id = result.data[0]['id']
-        
-        # Start processing in background
-        Thread(target=process_file, args=(file_id, file_path)).start()
-        
-        return jsonify({
-            'message': 'Fichier reçu et en cours de traitement',
-            'file_id': file_id
-        }), 202
-        
-    except Exception as e:
-        logger.error(f"Error uploading file: {str(e)}")
-        return jsonify({'error': str(e)}), 500
