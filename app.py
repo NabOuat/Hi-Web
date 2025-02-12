@@ -2433,6 +2433,98 @@ def uuid_to_int(uuid_str):
     # Enlever les tirets et convertir en entier base 16
     return int(uuid_str.replace('-', ''), 16) % (2**63)  # Pour rester dans les limites de bigint
 
+def process_file(file_id, file_path):
+    """Traite un fichier PDF et extrait les coordonnées"""
+    try:
+        supabase.table('files').update({'status': 'processing'}).eq('id', file_id).execute()
+        reader = easyocr.Reader(['fr'], gpu=False, download_enabled=True,
+            model_storage_directory=os.path.join(app.config['UPLOAD_FOLDER'], 'models'),
+            quantize=True)
+            
+        try:
+            with open(file_path, 'rb') as pdf_file:
+                images = convert_from_path(file_path, dpi=200, fmt='jpeg', thread_count=1)
+                total_points = 0
+                coordinates = []
+                
+                for page_num, image in enumerate(images, 1):
+                    image_np = np.array(image)
+                    image.close()
+                    results = reader.readtext(image_np, paragraph=False, batch_size=8)
+                    del image_np
+                    
+                    for (bbox, text, prob) in results:
+                        if prob > 0.5 and any(coord in text.lower() for coord in ['x', 'y', 'z']):
+                            coordinates.append({
+                                'page': page_num,
+                                'text': text,
+                                'confidence': prob,
+                                'bbox': bbox
+                            })
+                            total_points += 1
+                
+                if not coordinates:
+                    raise Exception("Aucune coordonnée trouvée dans le fichier")
+                    
+                csv_data = "Page,Text,Confidence,X1,Y1,X2,Y2,X3,Y3,X4,Y4\n"
+                for coord in coordinates:
+                    bbox = coord['bbox']
+                    csv_data += f"{coord['page']},{coord['text']},{coord['confidence']:.2f}"
+                    for point in bbox:
+                        csv_data += f",{point[0]:.2f},{point[1]:.2f}"
+                    csv_data += "\n"
+                
+                csv_filename = os.path.splitext(os.path.basename(file_path))[0] + '.csv'
+                csv_path = os.path.join(app.config['OUTPUT_FOLDER'], csv_filename)
+                
+                with open(csv_path, 'w', encoding='utf-8') as f:
+                    f.write(csv_data)
+                
+                try:
+                    upload_csv_to_supabase(file_id, csv_data, session.get('user_id', 'unknown'), '')
+                except Exception as e:
+                    logger.error(f"Erreur lors de l'upload du CSV vers Supabase: {str(e)}")
+                
+                supabase.table('files')\
+                    .update({
+                        'status': 'success',
+                        'points': total_points,
+                        'processed_at': datetime.now(timezone.utc).isoformat()
+                    })\
+                    .eq('id', file_id)\
+                    .execute()
+                    
+        except Exception as e:
+            logger.error(f"Erreur lors du traitement du fichier {file_id}: {str(e)}")
+            supabase.table('files')\
+                .update({
+                    'status': 'error',
+                    'error_message': str(e),
+                    'processed_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', file_id)\
+                .execute()
+                
+        finally:
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                logger.error(f"Erreur lors de la suppression du fichier temporaire {file_path}: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"Erreur fatale lors du traitement du fichier {file_id}: {str(e)}")
+        try:
+            supabase.table('files')\
+                .update({
+                    'status': 'error',
+                    'error_message': str(e),
+                    'processed_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', file_id)\
+                .execute()
+        except:
+            pass
+
 def process_pdf(file_path, file_id=None, output_dir=None):
     """Traite un fichier PDF et extrait les coordonnées"""
     try:

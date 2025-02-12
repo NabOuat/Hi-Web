@@ -7,11 +7,11 @@ services:
     startCommand: gunicorn app:app --bind=0.0.0.0:$PORT --config gunicorn.conf.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
+        value: 3.11.2
       - key: PORT
         value: 10000
       - key: WEB_CONCURRENCY
-        value: 2
+        value: 1
       - key: PYTHON_MAX_THREADS
         value: 1
       - key: MAX_UPLOAD_SIZE
@@ -41,3 +41,6 @@ services:
       maxInstances: 1
       targetMemoryPercent: 80
       targetCPUPercent: 80
+    resources:
+      memory: 2048
+      cpu: 1
