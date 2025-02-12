@@ -3320,4 +3320,6 @@ if __name__ == '__main__':
     # Initialiser le stockage Supabase au démarrage
     init_supabase_storage()
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Configuration du port pour Render
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)

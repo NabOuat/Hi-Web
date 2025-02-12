@@ -2,27 +2,42 @@ services:
   - type: web
     name: hi-web
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --timeout 300 --workers 4
     plan: standard
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.12
+        value: 3.9.0
       - key: PORT
         value: 10000
+      - key: WEB_CONCURRENCY
+        value: 2
+      - key: PYTHON_MAX_THREADS
+        value: 1
+      - key: MAX_UPLOAD_SIZE
+        value: 50000000
       - key: FLASK_ENV
         value: production
+        sync: false
       - key: SUPABASE_URL
         value: https://rjksrjvidvoizpawozha.supabase.co
+        sync: true
       - key: SUPABASE_KEY
         value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqa3NyanZpZHZvaXpwYXdvemhhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNzEwNzQyMCwiZXhwIjoyMDUyNjgzNDIwfQ.Igsskf2JWe0ZVwg8oQ_vOiSE5VSt_1gEKXJLeSVmCik
+        sync: true
       - key: SECRET_KEY
         value: hiconvert_secret_key_2024
+        generateValue: true
       - key: SUPABASE_ANON_KEY
         value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqa3NyanZpZHZvaXpwYXdvemhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcxMDc0MjAsImV4cCI6MjA1MjY4MzQyMH0.ROma2pmwHv-lxta5h5PCpvFY9oAkJdq3iC1Wluian80
     autoDeploy: true
     healthCheckPath: /
     disk:
-      name: hi-web-data
-      mountPath: /tmp
-      sizeGB: 1
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 2
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+      targetMemoryPercent: 80
+      targetCPUPercent: 80
