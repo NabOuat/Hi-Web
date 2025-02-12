@@ -456,10 +456,10 @@ function handleFolderSelection(event) {
     handleFiles(files);
 }
 
-// Téléchargement du CSV
-<<<<<<< HEAD
+// Téléchargement des fichiers
 async function downloadFile(fileId, type) {
     try {
+        console.log(`Téléchargement du fichier ${fileId} de type ${type}`);
         const response = await fetch(`/api/files/${fileId}/download?type=${type}`, {
             method: 'GET',
             headers: {
@@ -489,9 +489,11 @@ async function downloadFile(fileId, type) {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+        
+        console.log(`Téléchargement réussi pour ${filename}`);
     } catch (error) {
         console.error('Erreur lors du téléchargement:', error);
-        alert(`Erreur lors du téléchargement du fichier ${type.toUpperCase()}`);
+        showMessage(`Erreur lors du téléchargement du fichier ${type.toUpperCase()}: ${error.message}`, 'error');
     }
 }
 
@@ -504,6 +506,7 @@ async function downloadBoth(fileId) {
         }, 1000); // Attendre 1 seconde entre les téléchargements
     } catch (error) {
         console.error('Erreur lors du téléchargement:', error);
+        showMessage('Erreur lors du téléchargement des fichiers', 'error');
     }
 }
 
@@ -517,71 +520,6 @@ async function downloadCSV(fileId) {
     await downloadFile(fileId, 'csv');
 }
 
-=======
-async function downloadCSV(fileId) {
-    try {
-        showMessage('Téléchargement en cours...', 'info');
-        
-        const url = `/api/download/${fileId}`;
-        console.log('URL de téléchargement:', url);
-        
-        const response = await fetch(url);
-        console.log('Réponse du serveur:', response.status, response.statusText);
-        
-        if (!response.ok) {
-            let errorMessage = 'Erreur lors du téléchargement';
-            try {
-                const error = await response.json();
-                console.log('Erreur détaillée:', error);
-                errorMessage = error.error || errorMessage;
-            } catch (e) {
-                console.log('Erreur lors de la lecture de la réponse JSON:', e);
-            }
-            throw new Error(errorMessage);
-        }
-        
-        // Vérifier le type de contenu
-        const contentType = response.headers.get('content-type');
-        console.log('Type de contenu:', contentType);
-        
-        if (!contentType || !contentType.includes('text/csv')) {
-            console.warn('Type de contenu inattendu:', contentType);
-        }
-        
-        // Créer un blob à partir de la réponse
-        const blob = await response.blob();
-        console.log('Blob créé:', blob.size, 'bytes');
-        
-        // Créer un lien temporaire pour le téléchargement
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = downloadUrl;
-        
-        // Utiliser le nom du fichier s'il est fourni dans les headers
-        const disposition = response.headers.get('content-disposition');
-        let filename = 'download.csv';
-        if (disposition && disposition.includes('filename=')) {
-            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
-            if (matches != null && matches[1]) {
-                filename = matches[1].replace(/['"]/g, '');
-            }
-        }
-        a.download = filename;
-        
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(downloadUrl);
-        document.body.removeChild(a);
-        
-        showMessage('Téléchargement terminé avec succès!', 'success');
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage(error.message, 'error');
-    }
-}
-
->>>>>>> a06ee5e (Reinitialize repository)
 // Charger les statistiques utilisateur
 async function loadProfileAndStats() {
     try {
