@@ -33,7 +33,7 @@ import mimetypes
 import bcrypt
 from math import ceil
 import zipfile
-from io import BytesIO
+from io import BytesIO, StringIO
 import time
 import mimetypes
 import logging
@@ -518,10 +518,10 @@ def process():
 def download_file(file_id):
     """Télécharge un fichier depuis Supabase"""
     try:
+        # Récupérer les informations du fichier depuis la base de données
         user_id = session.get('user_id')
         logger.info(f"User ID: {user_id}")
         
-        # Récupérer les informations du fichier depuis la base de données
         response = supabase.table('files')\
             .select('*')\
             .eq('id', file_id)\
@@ -947,6 +947,71 @@ def get_files():
         error_msg = f"Erreur lors de la récupération des fichiers: {str(e)}"
         logger.error(error_msg)
         return jsonify({'error': error_msg}), 500
+
+@app.route('/api/files/<file_id>/download', methods=['GET'])
+@login_required
+def download_processed_file(file_id):
+    """Télécharger le résultat d'un fichier traité"""
+    try:
+        print(f"Tentative de téléchargement du fichier {file_id}")
+        
+        # Récupérer les informations du fichier depuis la base de données
+        user_id = session.get('user_id')
+        print(f"User ID: {user_id}")
+        
+        response = supabase.table('files')\
+            .select('*')\
+            .eq('id', file_id)\
+            .eq('user_id', user_id)\
+            .execute()
+            
+        print(f"Réponse de la base de données: {response.data}")
+            
+        if not response.data:
+            print(f"Fichier {file_id} non trouvé dans la base de données")
+            return jsonify({'error': 'Fichier non trouvé'}), 404
+            
+        file_info = response.data[0]
+        print(f"Informations du fichier: {file_info}")
+        
+        # Vérifier que le fichier a été traité avec succès
+        if file_info.get('status') != 'success':
+            print(f"Le fichier {file_id} n'a pas été traité avec succès. Status: {file_info.get('status')}")
+            return jsonify({'error': 'Le fichier n\'a pas été traité avec succès'}), 400
+            
+        # Construire le chemin du fichier CSV
+        output_dir = file_info.get('output_dir')
+        if not output_dir:
+            print("Dossier de sortie manquant dans la base de données")
+            return jsonify({'error': 'Informations du fichier incomplètes'}), 500
+            
+        csv_path = os.path.join(output_dir, f"{file_id}.csv")
+        print(f"Chemin du fichier CSV: {csv_path}")
+        
+        if not os.path.exists(csv_path):
+            print(f"Fichier CSV non trouvé: {csv_path}")
+            # Lister les fichiers dans le dossier
+            if os.path.exists(output_dir):
+                files = os.listdir(output_dir)
+                print(f"Fichiers dans le dossier {output_dir}: {files}")
+            return jsonify({'error': 'Fichier CSV non trouvé'}), 404
+            
+        try:
+            print(f"Envoi du fichier {csv_path}")
+            return send_file(
+                csv_path,
+                mimetype='text/csv',
+                as_attachment=True,
+                download_name=f"coordinates_{file_id}.csv"
+            )
+            
+        except Exception as e:
+            print(f"Erreur lors de l'envoi du fichier: {str(e)}")
+            return jsonify({'error': 'Erreur lors de l\'envoi du fichier'}), 500
+            
+    except Exception as e:
+        print(f"Erreur lors du téléchargement: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
 @login_required
@@ -1973,72 +2038,37 @@ def get_user_stats():
     try:
         user_id = session.get('user_id')
         
-        # Récupérer les statistiques des fichiers avec pagination
-        page_size = 100  # Limiter le nombre de fichiers par requête
-        total_files = 0
-        successful_files = 0
-        total_points = 0
-        
-        # Première requête pour obtenir le nombre total de fichiers
-        count = (supabase.table('files')
-            .select('id', count='exact')
-            .eq('user_id', user_id)
-            .execute())
-        
-        if hasattr(count, 'count'):
-            total_files = count.count
-        
-        # Récupérer les fichiers par lots
-        offset = 0
-        while True:
-            try:
-                files_batch = (supabase.table('files')
-                    .select('status, points')
-                    .eq('user_id', user_id)
-                    .range(offset, offset + page_size - 1)
-                    .execute())
-                
-                if not files_batch.data:
-                    break
-                    
-                successful_files += len([f for f in files_batch.data if f['status'] == 'success'])
-                total_points += sum(f['points'] or 0 for f in files_batch.data)
-                
-                if len(files_batch.data) < page_size:
-                    break
-                    
-                offset += page_size
-                
-            except Exception as batch_error:
-                logger.error(f"Erreur lors de la récupération du lot de fichiers: {str(batch_error)}")
-                continue
-        
+        # Récupérer les statistiques des fichiers
+        files = supabase.table('files')\
+            .select('status, points')\
+            .eq('user_id', user_id)\
+            .execute()
+            
+        # Calculer les statistiques
+        total_files = len(files.data)
+        successful_files = len([f for f in files.data if f['status'] == 'success'])
         success_rate = (successful_files / total_files * 100) if total_files > 0 else 0
         
-        # Récupérer l'historique des actions (limité aux 10 dernières)
-        try:
-            history = (supabase.table('activity_log')
-                .select('action, created_at')
-                .eq('user_id', user_id)
-                .order('created_at', desc=True)
-                .limit(10)
-                .execute())
-        except Exception as history_error:
-            logger.error(f"Erreur lors de la récupération de l'historique: {str(history_error)}")
-            history = type('obj', (object,), {'data': []})
+        # Récupérer l'historique des actions
+        history = supabase.table('activity_log')\
+            .select('action, created_at')\
+            .eq('user_id', user_id)\
+            .order('created_at', desc=True)\
+            .limit(10)\
+            .execute()
             
         stats = {
             'total_files': total_files,
             'successful_files': successful_files,
             'success_rate': round(success_rate, 2),
-            'points': total_points,
-            'recent_actions': history.data if hasattr(history, 'data') else []
+            'points': sum(f['points'] or 0 for f in files.data),  # Ajout de "or 0" pour gérer les None
+            'recent_actions': history.data if history.data else []
         }
         
         return jsonify(stats), 200
         
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des statistiques: {str(e)}")
+        print(f"Erreur lors de la récupération des statistiques: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/users/me/password', methods=['PUT'])
@@ -2079,7 +2109,7 @@ def log_user_action(user_id, action, details=None):
             'user_id': user_id,
             'action': action,
             'details': details,
-            'created_at': datetime.now(timezone.utc).isoformat()
+            'created_at': datetime.now().isoformat()
         }
         
         supabase.table('activity_log').insert(action_data).execute()
@@ -2903,6 +2933,7 @@ def get_admin_activity():
 
 @app.route('/api/admin/activity-stats', methods=['GET'])
 @login_required
+@role_required(['admin'])
 def get_admin_activity_stats():
     """Récupère les statistiques d'activité pour le dashboard admin"""
     try:
@@ -3123,6 +3154,7 @@ def format_size(size):
 
 @app.route('/api/admin/activity-log', methods=['GET'])
 @login_required
+@role_required(['admin'])
 def get_activity_log():
     """Récupère le journal d'activité pour le tableau de bord admin"""
     try:
@@ -3225,23 +3257,6 @@ def get_activity_log():
         return jsonify({'error': str(e)}), 500
 
 
-# Fonction pour reconnecter à Supabase en cas de déconnexion
-def reconnect_supabase():
-    """
-    Tente de reconnecter à Supabase en cas de déconnexion.
-    Retourne True si la reconnexion est réussie, False sinon.
-    """
-    try:
-        global supabase_client
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        # Test the connection by making a simple query
-        supabase_client.table('users').select('id').limit(1).execute()
-        print("Reconnexion à Supabase réussie")
-        return True
-    except Exception as e:
-        print(f"Échec de la reconnexion à Supabase: {str(e)}")
-        return False
-
 if __name__ == '__main__':
     app.static_folder = 'static'
     app.static_url_path = '/static'
@@ -3252,3 +3267,4 @@ if __name__ == '__main__':
     init_supabase_storage()
     
     app.run(debug=True, host='0.0.0.0', port=5000)
+
