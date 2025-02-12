@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Historique{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Historique des traitements</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card">
+        <div class="card-body">
+            <!-- Contrôles de pagination en haut -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center">
+                    <label class="me-2">Éléments par page:</label>
+                    <select class="form-select form-select-sm" style="width: auto;" onchange="changePerPage(this.value)">
+                        {% for n in allowed_per_page %}
+                            <option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="text-muted">
+                    Total: {{ total_items }} élément{% if total_items > 1 %}s{% endif %}
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Action</th>
+                            <th>Détails</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if history %}
+                            {% for item in history %}
+                                <tr>
+                                    <td>{{ item.created_at|datetime }}</td>
+                                    <td>
+                                        {% if item.action == 'file_process' %}
+                                            Traitement de fichier
+                                        {% elif item.action == 'file_upload' %}
+                                            Upload de fichier
+                                        {% elif item.action == 'file_download' %}
+                                            Téléchargement de fichier
+                                        {% else %}
+                                            {{ item.action }}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.details %}
+                                            {% if item.details.file_id %}
+                                                ID Fichier: {{ item.details.file_id }}<br>
+                                            {% endif %}
+                                            {% if item.details.status %}
+                                                Statut: 
+                                                {% if item.details.status == 'success' %}
+                                                    <span class="badge bg-success">Succès</span>
+                                                {% elif item.details.status == 'error' %}
+                                                    <span class="badge bg-danger">Erreur</span>
+                                                    {% if item.details.error %}
+                                                        <br>Erreur: {{ item.details.error }}
+                                                    {% endif %}
+                                                {% else %}
+                                                    {{ item.details.status }}
+                                                {% endif %}
+                                            {% endif %}
+                                            {% if item.details.points is defined %}
+                                                <br>Points détectés: {{ item.details.points }}
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center">Aucun historique disponible</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination en bas -->
+            {% if total_pages > 1 %}
+            <nav aria-label="Navigation des pages" class="mt-3">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item {% if current_page == 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('historique', page=current_page-1, per_page=per_page) if current_page > 1 else '#' }}" {% if current_page == 1 %}tabindex="-1" aria-disabled="true"{% endif %}>Précédent</a>
+                    </li>
+                    
+                    {% for p in range(1, total_pages + 1) %}
+                        {% if p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
+                            <li class="page-item {% if p == current_page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('historique', page=p, per_page=per_page) }}">{{ p }}</a>
+                            </li>
+                        {% elif p == current_page - 3 or p == current_page + 3 %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    <li class="page-item {% if current_page == total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('historique', page=current_page+1, per_page=per_page) if current_page < total_pages else '#' }}" {% if current_page == total_pages %}tabindex="-1" aria-disabled="true"{% endif %}>Suivant</a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function changePerPage(value) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('per_page', value);
+    url.searchParams.set('page', 1);  // Reset to first page when changing items per page
+    window.location.href = url.toString();
+}
+</script>
+{% endblock %}

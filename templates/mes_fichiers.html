@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block title %}Mes fichiers{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Mes fichiers</h1>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" onclick="document.getElementById('folderInput').click()">
+                <i class="bi bi-upload me-2"></i>Importer
+            </button>
+            <div class="mb-3">
+                <label for="folderInput" class="form-label">
+                    <i class="bi bi-folder2-open me-1"></i>
+                    Sélectionnez un dossier contenant des fichiers plan.pdf
+                </label>
+                <div class="input-group">
+                    <input type="file" 
+                           class="form-control" 
+                           id="folderInput" 
+                           name="folderInput"
+                           webkitdirectory 
+                           mozdirectory
+                           directory
+                           multiple
+                           aria-label="Sélectionner un dossier"
+                           aria-describedby="folderHelp">
+                </div>
+                <div id="folderHelp" class="form-text">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Les fichiers nommés "plan.pdf" seront automatiquement détectés dans le dossier sélectionné
+                </div>
+            </div>
+            <div class="d-flex gap-2 mb-4">
+                <button id="startButton" 
+                        class="btn btn-success px-3 py-1 rounded-pill shadow-sm"
+                        aria-label="Lancer le traitement">
+                    <i class="bi bi-play-fill me-1"></i>
+                    Lancer le traitement
+                </button>
+                <button id="clearButton" 
+                        class="btn btn-outline-danger px-3 py-1 rounded-pill"
+                        aria-label="Effacer la sélection">
+                    <i class="bi bi-trash me-1"></i>
+                    Effacer la sélection
+                </button>
+            </div>
+            <div id="alertContainer"></div>
+        </div>
+    </div>
+
+    <!-- File List -->
+    <div class="card">
+        <div class="card-header">
+            <div class="row align-items-center">
+                <div class="col">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Rechercher un fichier...">
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <select class="form-select" id="statusFilter">
+                        <option value="all">Tous les statuts</option>
+                        <option value="success">Succès</option>
+                        <option value="error">Erreur</option>
+                        <option value="pending">En attente</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" aria-label="Liste des fichiers">
+                    <thead>
+                        <tr>
+                            <th scope="col">Nom du fichier</th>
+                            <th scope="col">Date</th>
+                            <th scope="col">Statut</th>
+                            <th scope="col">Points</th>
+                            <th scope="col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fileList">
+                        <!-- Rempli dynamiquement par JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer">
+            <nav aria-label="Pagination des fichiers">
+                <ul class="pagination justify-content-center mb-0">
+                    <!-- Pagination remplie par JavaScript -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+    <div class="modal fade" id="processingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Traitement en cours</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Chargement...</span>
+                        </div>
+                    </div>
+                    <p id="processingFile" class="text-center mb-3"></p>
+                    <div class="progress">
+                        <div id="progressBar" 
+                             class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" 
+                             style="width: 0%" 
+                             aria-valuenow="0" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive mt-4">
+        <table class="table table-hover" aria-label="Résultats du traitement">
+            <thead>
+                <tr>
+                    <th scope="col">Dossier</th>
+                    <th scope="col">Points</th>
+                    <th scope="col">Temps</th>
+                    <th scope="col">Statut</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="resultsTable">
+                <tr>
+                    <td colspan="5" class="text-center py-4">
+                        <div class="text-muted">
+                            <i class="bi bi-folder2-open" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Sélectionnez un dossier contenant des fichiers plan.pdf</p>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Processing Modal -->
+<div class="modal fade" id="processingModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Chargement...</span>
+                </div>
+                <h5 class="modal-title">Traitement en cours</h5>
+                <p class="text-muted mb-0">Veuillez patienter pendant le traitement de vos fichiers...</p>
+                <div class="progress mt-3" style="height: 10px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         id="uploadProgress"
+                         style="width: 0%">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+const itemsPerPage = 10;
+let files = [];
+
+// Charger les fichiers
+async function loadFiles(page = 1) {
+    try {
+        const response = await fetch(`/api/files?page=${page}&per_page=${itemsPerPage}`);
+        const data = await response.json();
+        
+        files = data.files;
+        renderFiles();
+        renderPagination(data.total_pages, page);
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors du chargement des fichiers');
+    }
+}
+
+// Afficher les fichiers
+function renderFiles() {
+    const tbody = document.getElementById('fileList');
+    tbody.innerHTML = '';
+    
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
+    
+    const filteredFiles = files.filter(file => {
+        const matchesSearch = file.filename.toLowerCase().includes(searchTerm);
+        const matchesStatus = statusFilter === 'all' || file.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+    
+    for (const file of filteredFiles) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${file.filename}</td>
+            <td>${new Date(file.created_at).toLocaleString()}</td>
+            <td>
+                <span class="badge bg-${getStatusBadgeClass(file.status)}">
+                    ${getStatusLabel(file.status)}
+                </span>
+            </td>
+            <td>${file.points}</td>
+            <td>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-primary" 
+                            onclick="downloadResult('${file.id}')"
+                            title="Télécharger"
+                            ${file.status !== 'success' ? 'disabled' : ''}>
+                        <i class="bi bi-download"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" 
+                            onclick="deleteFile('${file.id}')"
+                            title="Supprimer">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+}
+
+// Afficher la pagination
+function renderPagination(totalPages, currentPage) {
+    const pagination = document.querySelector('.pagination');
+    pagination.innerHTML = '';
+    
+    // Bouton précédent
+    pagination.innerHTML += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="loadFiles(${currentPage - 1})">
+                <i class="bi bi-chevron-left"></i>
+            </a>
+        </li>
+    `;
+    
+    // Pages
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+            pagination.innerHTML += `
+                <li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="loadFiles(${i})">${i}</a>
+                </li>
+            `;
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+            pagination.innerHTML += `
+                <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                </li>
+            `;
+        }
+    }
+    
+    // Bouton suivant
+    pagination.innerHTML += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="loadFiles(${currentPage + 1})">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </li>
+    `;
+}
+
+// Gérer le téléchargement
+async function downloadResult(fileId) {
+    try {
+        const response = await fetch(`/api/files/${fileId}/download`);
+        if (!response.ok) throw new Error('Download failed');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `result_${fileId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors du téléchargement');
+    }
+}
+
+// Gérer la suppression
+async function deleteFile(fileId) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer ce fichier ?')) {
+        try {
+            const response = await fetch(`/api/files/${fileId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                loadFiles(currentPage);
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Erreur lors de la suppression');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Erreur lors de la suppression');
+        }
+    }
+}
+
+// Gérer l'upload de fichiers
+async function handleFileUpload(event) {
+    const files = event.target.files;
+    if (!files.length) return;
+    
+    const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
+    processingModal.show();
+    
+    const progressBar = document.getElementById('uploadProgress');
+    const totalFiles = files.length;
+    let processedFiles = 0;
+    
+    try {
+        for (const file of files) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            await fetch('/api/process', {
+                method: 'POST',
+                body: formData
+            });
+            
+            processedFiles++;
+            const progress = (processedFiles / totalFiles) * 100;
+            progressBar.style.width = `${progress}%`;
+        }
+        
+        // Recharger la liste des fichiers
+        await loadFiles(1);
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors du traitement des fichiers');
+    } finally {
+        processingModal.hide();
+        event.target.value = ''; // Reset file input
+        progressBar.style.width = '0%';
+    }
+}
+
+// Utilitaires
+function getStatusBadgeClass(status) {
+    switch (status) {
+        case 'success': return 'success';
+        case 'error': return 'danger';
+        case 'pending': return 'warning';
+        default: return 'secondary';
+    }
+}
+
+function getStatusLabel(status) {
+    switch (status) {
+        case 'success': return 'Succès';
+        case 'error': return 'Erreur';
+        case 'pending': return 'En attente';
+        default: return 'Inconnu';
+    }
+}
+
+// Event listeners
+document.getElementById('searchInput').addEventListener('input', renderFiles);
+document.getElementById('statusFilter').addEventListener('change', renderFiles);
+
+// Charger les fichiers au chargement de la page
+document.addEventListener('DOMContentLoaded', () => loadFiles(1));
+</script>
+{% endblock %}

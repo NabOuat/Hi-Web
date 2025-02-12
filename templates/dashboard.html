@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Tableau de bord</h1>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="row mt-4">
+        <!-- Statistiques -->
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Fichiers traités</h5>
+                    <p class="card-text display-4">{{ stats.files_processed }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Taux de succès</h5>
+                    <p class="card-text display-4">{{ stats.success_rate }}%</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Dernière activité</h5>
+                    <p class="card-text">{{ stats.last_activity }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Points</h5>
+                    <p class="card-text display-4">{{ stats.points }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historique -->
+    <div class="mt-5">
+        <h2>Historique des traitements</h2>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Fichier</th>
+                        <th>Statut</th>
+                        <th>Résultat</th>
+<<<<<<< HEAD
+                        <th>Téléchargement</th>
+=======
+>>>>>>> a06ee5e (Reinitialize repository)
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if history %}
+                        {% for item in history %}
+                        <tr>
+                            <td>{{ item.date }}</td>
+                            <td>{{ item.filename }}</td>
+                            <td>
+                                {% if item.result == 'Succès' %}
+                                    <span class="badge bg-success">{{ item.result }}</span>
+                                {% elif item.result == 'Erreur' %}
+                                    <span class="badge bg-danger">{{ item.result }}</span>
+                                {% elif item.result == 'En cours' %}
+                                    <span class="badge bg-warning">{{ item.result }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ item.result }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item.success_rate == 100 %}
+                                    <i class="fas fa-check-circle text-success"></i>
+                                {% elif item.success_rate == 0 and item.result != 'En attente' %}
+                                    <i class="fas fa-times-circle text-danger"></i>
+                                {% else %}
+                                    <i class="fas fa-clock text-warning"></i>
+                                {% endif %}
+                            </td>
+<<<<<<< HEAD
+                            <td>
+                                <button class="btn btn-primary btn-sm" onclick="downloadBoth('{{ item.id }}')" title="Télécharger PDF et CSV">
+                                    <i class="fas fa-download"></i> Tout
+                                </button>
+                                <button class="btn btn-info btn-sm" onclick="downloadPDF('{{ item.id }}')" title="Télécharger PDF">
+                                    <i class="fas fa-file-pdf"></i> PDF
+                                </button>
+                                <button class="btn btn-success btn-sm" onclick="downloadCSV('{{ item.id }}')" title="Télécharger CSV">
+                                    <i class="fas fa-file-csv"></i> CSV
+                                </button>
+                            </td>
+=======
+>>>>>>> a06ee5e (Reinitialize repository)
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+<<<<<<< HEAD
+                            <td colspan="5" class="text-center">Aucun historique disponible</td>
+=======
+                            <td colspan="4" class="text-center">Aucun historique disponible</td>
+>>>>>>> a06ee5e (Reinitialize repository)
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Graphique d'évolution -->
+    <div class="mt-5">
+        <h2>Évolution des traitements</h2>
+        <div class="chart-container" style="position: relative; height:300px;">
+            <canvas id="evolutionChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('evolutionChart').getContext('2d');
+    
+    // Récupération et conversion des données
+    const rawData = JSON.parse('{{ history|tojson|safe }}');
+    
+    // Préparation des données pour le graphique
+    const processedData = {
+        labels: [],
+        rates: []
+    };
+
+    // Traitement des données par date
+    if (Array.isArray(rawData) && rawData.length > 0) {
+        rawData.forEach(function(item) {
+            if (item && item.date) {
+                const date = new Date(item.date).toLocaleDateString();
+                if (!processedData.labels.includes(date)) {
+                    processedData.labels.push(date);
+                    processedData.rates.push(item.success_rate || 0);
+                }
+            }
+        });
+    }
+
+    // Configuration du graphique
+    const chartConfig = {
+        type: 'line',
+        data: {
+            labels: processedData.labels,
+            datasets: [{
+                label: 'Taux de succès (%)',
+                data: processedData.rates,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Taux de succès (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Date'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            }
+        }
+    };
+
+    // Création du graphique
+    new Chart(ctx, chartConfig);
+});
+
+async function downloadAllCSV() {
+    try {
+        window.location.href = '/api/download-all-coordinates';
+    } catch (error) {
+        alert('Erreur lors du téléchargement : ' + error.message);
+    }
+}
+
+async function downloadBoth(id) {
+    try {
+        window.location.href = '/api/download-both/' + id;
+    } catch (error) {
+        alert('Erreur lors du téléchargement : ' + error.message);
+    }
+}
+
+async function downloadPDF(id) {
+    try {
+        window.location.href = '/api/download-pdf/' + id;
+    } catch (error) {
+        alert('Erreur lors du téléchargement : ' + error.message);
+    }
+}
+
+async function downloadCSV(id) {
+    try {
+        window.location.href = '/api/download-csv/' + id;
+    } catch (error) {
+        alert('Erreur lors du téléchargement : ' + error.message);
+    }
+}
+</script>
+{% endblock %}

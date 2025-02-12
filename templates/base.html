@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Hi-Web{% endblock %}</title>
+
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='icon.ico') }}">
+   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            padding: 48px 0 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+            width: 280px;
+            transition: margin .3s ease-in-out;
+        }
+        
+        .sidebar-sticky {
+            height: calc(100vh - 48px);
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        
+        .sidebar .nav-link {
+            font-weight: 500;
+            color: var(--bs-secondary-color);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .sidebar .nav-link:hover {
+            color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        
+        .sidebar .nav-link.active {
+            color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.2);
+        }
+        
+        /* Main content */
+        .main-content {
+            margin-left: 280px;
+            padding-top: 48px;
+            min-height: 100vh;
+            transition: margin .3s ease-in-out;
+        }
+        
+        /* Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: 280px;
+            z-index: 99;
+            height: 48px;
+            padding: 0 1rem;
+            background: var(--bs-body-bg);
+            border-bottom: 1px solid var(--bs-border-color);
+            transition: left .3s ease-in-out;
+        }
+        
+        /* Toggle sidebar */
+        .sidebar-toggle {
+            padding: 0.25rem 0.75rem;
+            font-size: 1.25rem;
+            background: transparent;
+            border: none;
+            color: var(--bs-secondary-color);
+        }
+        
+        .sidebar-toggle:hover {
+            color: var(--bs-primary);
+        }
+        
+        /* Collapsed state */
+        .sidebar-collapsed .sidebar {
+            margin-left: -280px;
+        }
+        
+        .sidebar-collapsed .main-content,
+        .sidebar-collapsed .navbar {
+            margin-left: 0;
+            left: 0;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                margin-left: -280px;
+            }
+            
+            .main-content,
+            .navbar {
+                margin-left: 0;
+                left: 0;
+            }
+            
+            .sidebar-expanded .sidebar {
+                margin-left: 0;
+            }
+            
+            .sidebar-expanded .main-content,
+            .sidebar-expanded .navbar {
+                margin-left: 280px;
+                left: 280px;
+            }
+        }
+        
+        /* Custom styles */
+        .nav-item-header {
+            padding: 0.5rem 1.5rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--bs-secondary-color);
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .dropdown-menu {
+            border: 1px solid var(--bs-border-color);
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar bg-dark text-light">
+        <div class="d-flex flex-column h-100">
+            <!-- Logo -->
+            <div class="p-3 border-bottom">
+                <h4 class="mb-0">Hi-Web</h4>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="nav flex-column mt-3">
+                {% if session.role == 'user' %}
+                <a href="{{ url_for('user_dashboard') }}" class="nav-link text-light {% if request.endpoint == 'user_dashboard' %}active{% endif %}">
+                    <i class="bi bi-file-earmark me-2"></i> Mes fichiers
+                </a>
+                <a href="{{ url_for('historique') }}" class="nav-link text-light {% if request.endpoint == 'historique' %}active{% endif %}">
+                    <i class="bi bi-clock-history me-2"></i> Historique
+                </a>
+                {% endif %}
+
+                {% if session.role in ['admin', 'superadmin'] %}
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-link text-light {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                    <i class="bi bi-speedometer2 me-2"></i> Tableau de bord
+                </a>
+                <a href="{{ url_for('get_users') }}" class="nav-link text-light {% if request.endpoint == 'get_users' %}active{% endif %}">
+                    <i class="bi bi-people me-2"></i> Gestion des utilisateurs
+                </a>
+                <a href="{{ url_for('get_directories') }}" class="nav-link text-light {% if request.endpoint == 'get_directories' %}active{% endif %}">
+                    <i class="bi bi-folder me-2"></i> Gestion des répertoires
+                </a>
+                {% endif %}
+
+                <!-- Section Paramètres -->
+                <div class="mt-3">
+                    <div class="sidebar-heading px-3 py-2 text-uppercase fs-7 text-muted">
+                        Paramètres
+                    </div>
+                    <a href="{{ url_for('mon_profil') }}" class="nav-link text-light {% if request.endpoint == 'mon_profil' %}active{% endif %}">
+                        <i class="bi bi-person me-2"></i> Mon profil
+                    </a>
+                </div>
+            </nav>
+
+            <!-- User Info -->
+            <div class="mt-auto p-3 border-top">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-person-circle fs-4"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <div class="small text-muted">Connecté en tant que</div>
+                        <div class="fw-bold">{{ session.email }}</div>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <a href="{{ url_for('logout') }}" class="btn btn-link text-light p-0" title="Déconnexion">
+                            <i class="bi bi-box-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container-fluid">
+            <button class="sidebar-toggle" 
+                    onclick="toggleSidebar()" 
+                    aria-label="Ouvrir/Fermer la barre latérale"
+                    title="Ouvrir/Fermer la barre latérale">
+                <i class="bi bi-list" aria-hidden="true"></i>
+            </button>
+            
+            <div class="d-flex align-items-center gap-3">
+                <button class="btn btn-link p-0" 
+                        onclick="toggleTheme()" 
+                        aria-label="Changer le thème"
+                        title="Changer le thème">
+                    <i class="bi bi-sun-fill" aria-hidden="true" id="themeIcon"></i>
+                </button>
+                
+                <div class="dropdown">
+                    <button class="btn btn-link p-0" 
+                            data-bs-toggle="dropdown" 
+                            aria-label="Ouvrir le menu"
+                            title="Ouvrir le menu">
+                        <i class="bi bi-person-circle" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><h6 class="dropdown-header">{{ session.email }}</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="#">
+                                <i class="bi bi-person"></i>
+                                Mon profil
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#">
+                                <i class="bi bi-gear"></i>
+                                Paramètres
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                <i class="bi bi-box-arrow-right"></i>
+                                Déconnexion
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    function toggleSidebar() {
+        document.body.classList.toggle('sidebar-collapsed');
+        document.body.classList.toggle('sidebar-expanded');
+    }
+    
+    // Gestion responsive
+    function handleResize() {
+        if (window.innerWidth <= 768) {
+            document.body.classList.remove('sidebar-collapsed');
+            document.body.classList.add('sidebar-expanded');
+        } else {
+            document.body.classList.remove('sidebar-expanded');
+        }
+    }
+    
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    
+    // Initialisation du thème
+    document.addEventListener('DOMContentLoaded', function() {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-bs-theme', savedTheme);
+        document.getElementById('themeIcon').className = 
+            savedTheme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+    });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

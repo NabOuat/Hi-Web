@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des utilisateurs{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Gestion des utilisateurs</h1>
+        <button class="btn btn-primary" onclick="openCreateUserModal()">
+            <i class="bi bi-person-plus me-2"></i>Nouvel utilisateur
+        </button>
+    </div>
+
+    <!-- User List -->
+    <div class="card">
+        <div class="card-header">
+            <div class="row align-items-center">
+                <div class="col">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Rechercher un utilisateur...">
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <select class="form-select" id="roleFilter">
+                        <option value="all">Tous les rôles</option>
+                        {% if session.role == 'superadmin' %}
+                        <option value="superadmin">Superadmin</option>
+                        {% endif %}
+                        <option value="admin">Admin</option>
+                        <option value="user">Utilisateur</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <select class="form-select" id="statusFilter">
+                        <option value="all">Tous les statuts</option>
+                        <option value="true">Actif</option>
+                        <option value="false">Inactif</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Rôle</th>
+                            <th>Répertoire</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userList">
+                        <!-- Rempli dynamiquement par JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nouvel utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createUserForm">
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mot de passe</label>
+                        <input type="password" class="form-control" name="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rôle</label>
+                        <select class="form-select" name="role" required>
+                            {% if session.role == 'superadmin' %}
+                            <option value="superadmin">Superadmin</option>
+                            <option value="admin">Admin</option>
+                            {% endif %}
+                            <option value="user">Utilisateur</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="directorySelectContainer">
+                        <label class="form-label">Répertoire</label>
+                        <select class="form-select" name="directory_id">
+                            <!-- Rempli dynamiquement par JavaScript -->
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="createUser()">Créer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Modifier l'utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editUserForm">
+                    <input type="hidden" name="user_id">
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nouveau mot de passe</label>
+                        <input type="password" class="form-control" name="password" placeholder="Laisser vide pour ne pas modifier">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Statut</label>
+                        <select class="form-select" name="is_active">
+                            <option value="true">Actif</option>
+                            <option value="false">Inactif</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="editDirectorySelectContainer">
+                        <label class="form-label">Répertoire</label>
+                        <select class="form-select" name="directory_id">
+                            <!-- Rempli dynamiquement par JavaScript -->
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="updateUser()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let createUserModal;
+let editUserModal;
+let directories = [];
+const currentUserRole = '{{ session.role }}';
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', async () => {
+    createUserModal = new bootstrap.Modal(document.getElementById('createUserModal'));
+    editUserModal = new bootstrap.Modal(document.getElementById('editUserModal'));
+    
+    // Charger les répertoires
+    await loadDirectories();
+    
+    // Charger les utilisateurs
+    await loadUsers();
+    
+    // Event listeners pour les filtres
+    document.getElementById('searchInput').addEventListener('input', filterUsers);
+    document.getElementById('roleFilter').addEventListener('change', filterUsers);
+    document.getElementById('statusFilter').addEventListener('change', filterUsers);
+    
+    // Event listener pour le choix du rôle lors de la création
+    document.querySelector('#createUserForm select[name="role"]').addEventListener('change', function(e) {
+        const directoryContainer = document.getElementById('directorySelectContainer');
+        directoryContainer.style.display = e.target.value === 'superadmin' ? 'none' : 'block';
+    });
+});
+
+// Charger les répertoires
+async function loadDirectories() {
+    try {
+        const response = await fetch('/api/directories');
+        const data = await response.json();
+        directories = data.directories;
+        
+        // Mettre à jour les selects de répertoires
+        const createSelect = document.querySelector('#createUserForm select[name="directory_id"]');
+        const editSelect = document.querySelector('#editUserForm select[name="directory_id"]');
+        
+        const directoryOptions = directories.map(dir => 
+            `<option value="${dir.id}">${dir.name}</option>`
+        ).join('');
+        
+        createSelect.innerHTML = directoryOptions;
+        editSelect.innerHTML = directoryOptions;
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors du chargement des répertoires');
+    }
+}
+
+// Charger les utilisateurs
+async function loadUsers() {
+    try {
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        
+        const tbody = document.getElementById('userList');
+        tbody.innerHTML = '';
+        
+        for (const user of data.users) {
+            const directory = directories.find(d => d.id === user.directory_id);
+            const tr = document.createElement('tr');
+            
+            tr.innerHTML = `
+                <td>${user.email}</td>
+                <td>${user.role}</td>
+                <td>${directory ? directory.name : '-'}</td>
+                <td>
+                    <span class="badge bg-${user.is_active ? 'success' : 'danger'}">
+                        ${user.is_active ? 'Actif' : 'Inactif'}
+                    </span>
+                </td>
+                <td>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" 
+                                onclick="openEditUserModal('${user.id}')"
+                                title="Modifier"
+                                ${!canEditUser(user) ? 'disabled' : ''}>
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" 
+                                onclick="deleteUser('${user.id}')"
+                                title="Supprimer"
+                                ${!canDeleteUser(user) ? 'disabled' : ''}>
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            
+            tbody.appendChild(tr);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors du chargement des utilisateurs');
+    }
+}
+
+// Filtrer les utilisateurs
+function filterUsers() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const roleFilter = document.getElementById('roleFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+    
+    const rows = document.getElementById('userList').getElementsByTagName('tr');
+    
+    for (const row of rows) {
+        const email = row.cells[0].textContent.toLowerCase();
+        const role = row.cells[1].textContent.toLowerCase();
+        const isActive = row.cells[3].textContent.trim() === 'Actif';
+        
+        const matchesSearch = email.includes(searchTerm);
+        const matchesRole = roleFilter === 'all' || role === roleFilter;
+        const matchesStatus = statusFilter === 'all' || 
+                            (statusFilter === 'true' && isActive) || 
+                            (statusFilter === 'false' && !isActive);
+        
+        row.style.display = matchesSearch && matchesRole && matchesStatus ? '' : 'none';
+    }
+}
+
+// Ouvrir le modal de création
+function openCreateUserModal() {
+    const form = document.getElementById('createUserForm');
+    form.reset();
+    
+    // Afficher/masquer le select de répertoire selon le rôle
+    const roleSelect = form.querySelector('select[name="role"]');
+    const directoryContainer = document.getElementById('directorySelectContainer');
+    directoryContainer.style.display = roleSelect.value === 'superadmin' ? 'none' : 'block';
+    
+    createUserModal.show();
+}
+
+// Créer un utilisateur
+async function createUser() {
+    try {
+        const form = document.getElementById('createUserForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Convertir les booléens
+        if (data.is_active) {
+            data.is_active = data.is_active === 'true';
+        }
+        
+        // Ne pas envoyer directory_id pour les superadmin
+        if (data.role === 'superadmin') {
+            delete data.directory_id;
+        }
+        
+        const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            createUserModal.hide();
+            await loadUsers();
+        } else {
+            const error = await response.json();
+            alert(error.error || 'Erreur lors de la création de l\'utilisateur');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors de la création de l\'utilisateur');
+    }
+}
+
+// Ouvrir le modal de modification
+async function openEditUserModal(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}`);
+        const data = await response.json();
+        const user = data.user;
+        
+        const form = document.getElementById('editUserForm');
+        form.querySelector('input[name="user_id"]').value = user.id;
+        form.querySelector('input[name="email"]').value = user.email;
+        form.querySelector('input[name="password"]').value = '';
+        form.querySelector('select[name="is_active"]').value = user.is_active;
+        
+        // Afficher/masquer le select de répertoire selon le rôle
+        const directoryContainer = document.getElementById('editDirectorySelectContainer');
+        directoryContainer.style.display = user.role === 'superadmin' ? 'none' : 'block';
+        
+        if (user.directory_id) {
+            form.querySelector('select[name="directory_id"]').value = user.directory_id;
+        }
+        
+        editUserModal.show();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors du chargement des données de l\'utilisateur');
+    }
+}
+
+// Mettre à jour un utilisateur
+async function updateUser() {
+    try {
+        const form = document.getElementById('editUserForm');
+        const formData = new FormData(form);
+        const userId = formData.get('user_id');
+        const data = Object.fromEntries(formData.entries());
+        
+        // Nettoyer les données
+        delete data.user_id;
+        if (!data.password) delete data.password;
+        
+        // Convertir les booléens
+        data.is_active = data.is_active === 'true';
+        
+        const response = await fetch(`/api/users/${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            editUserModal.hide();
+            await loadUsers();
+        } else {
+            const error = await response.json();
+            alert(error.error || 'Erreur lors de la mise à jour de l\'utilisateur');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Erreur lors de la mise à jour de l\'utilisateur');
+    }
+}
+
+// Supprimer un utilisateur
+async function deleteUser(userId) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+        try {
+            const response = await fetch(`/api/users/${userId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                await loadUsers();
+            } else {
+                const error = await response.json();
+                alert(error.error || 'Erreur lors de la suppression de l\'utilisateur');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Erreur lors de la suppression de l\'utilisateur');
+        }
+    }
+}
+
+// Vérifier les permissions d'édition
+function canEditUser(user) {
+    if (currentUserRole === 'superadmin') return true;
+    if (currentUserRole === 'admin') {
+        return user.role === 'user';
+    }
+    return false;
+}
+
+// Vérifier les permissions de suppression
+function canDeleteUser(user) {
+    if (currentUserRole === 'superadmin') return true;
+    if (currentUserRole === 'admin') {
+        return user.role === 'user';
+    }
+    return false;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Tableau de bord Admin</h1>
+        <div>
+            <button class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#exportModal">
+                <i class="bi bi-download"></i> Exporter les données
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                <i class="bi bi-person-plus"></i> Ajouter un utilisateur
+            </button>
+        </div>
+    </div>
+    
+    <!-- Statistics Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-people fs-1 text-primary"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Utilisateurs totaux</h6>
+                            <h2 class="card-title mb-0" id="total_users">{{ total_users }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-check-circle fs-1 text-success"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Taux de succès moyen</h6>
+                            <h2 class="card-title mb-0" id="success_rate">{{ success_rate|default('0') }}%</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-exclamation-triangle fs-1 text-warning"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Fichiers en erreur</h6>
+                            <h2 class="card-title mb-0" id="error_files">{{ error_files|default('0') }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-file-earmark-text fs-1 text-info"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Fichiers traités</h6>
+                            <h2 class="card-title mb-0" id="total_files">{{ total_files }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> 
+
+    <!-- Charts Row -->
+    <div class="row g-4 mb-4">
+        <!-- Activity Chart -->
+        <div class="col-12 col-xl-8">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Activité des utilisateurs</h5>
+                    <div class="btn-group" id="periodButtons">
+                        <button class="btn btn-outline-secondary btn-sm active" id="weekButton" data-period="week">7 jours</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="monthButton" data-period="month">30 jours</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="activityChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Chart -->
+        <div class="col-12 col-xl-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Statuts des fichiers</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="storageChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users and Activity Tabs -->
+    <div class="card">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" data-bs-toggle="tab" href="#users" role="tab">Utilisateurs</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#activity" role="tab">Journal d'activité</a>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body">
+            <div class="tab-content">
+                <!-- Users Tab -->
+                <div class="tab-pane fade show active" id="users" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex gap-2">
+                            <div class="input-group" style="width: 300px;">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="userSearch" placeholder="Rechercher un utilisateur...">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-primary" id="exportUsers">
+                            <i class="bi bi-download"></i> Exporter
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" class="form-check-input" id="selectAllUsers">
+                                    </th>
+                                    <th>Email</th>
+                                    <th>Fichiers traités</th>
+                                    <th>Points extraits</th>
+                                    <th>Dernière activité</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input user-select" value="{{ user.id }}">
+                                    </td>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ user.processed_files }}</td>
+                                    <td>{{ user.points_extracted }}</td>
+                                    <td>{{ user.last_activity|default('Jamais', true) }}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="viewUserDetails('{{ user.id }}')"
+                                                    title="Voir les détails">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="editUser('{{ user.id }}')"
+                                                    title="Modifier">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Activity Tab -->
+                <div class="tab-pane fade" id="activity" role="tabpanel">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex gap-2 flex-grow-1 me-3">
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input type="text" class="form-control" id="activitySearch" 
+                                       placeholder="Rechercher par utilisateur, type ou description...">
+                            </div>
+                            <select class="form-select" style="width: auto;" id="activityTypeFilter">
+                                <option value="">Toutes les activités</option>
+                                <option value="login">Connexions</option>
+                                <option value="file_process_start">Début de traitement</option>
+                                <option value="file_process_success">Traitement réussi</option>
+                                <option value="file_process_error">Erreur de traitement</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-outline-primary" id="exportActivity">
+                            <i class="bi bi-download me-1"></i>Exporter
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 180px;">Date et heure</th>
+                                    <th style="width: 25%;">Utilisateur</th>
+                                    <th style="width: 20%;">Type d'activité</th>
+                                    <th>Détails</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activityTableBody">
+                                <!-- Le contenu sera rempli dynamiquement -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ajouter un utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addUserForm" onsubmit="return handleAddUser(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="userEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="userEmail" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="userPassword" class="form-label">Mot de passe</label>
+                        <input type="password" class="form-control" id="userPassword" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Modifier l'utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editUserForm" onsubmit="return handleEditUser(event)">
+                <div class="modal-body">
+                    <input type="hidden" id="editUserId">
+                    <div class="mb-3">
+                        <label for="editUserEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="editUserEmail" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editUserPassword" class="form-label">Nouveau mot de passe (optionnel)</label>
+                        <input type="password" class="form-control" id="editUserPassword">
+                        <small class="form-text text-muted">Laissez vide pour conserver le mot de passe actuel</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- User Details Modal -->
+<div class="modal fade" id="userDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails de l'utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Informations générales</h6>
+                        <dl class="row">
+                            <dt class="col-sm-4">Email</dt>
+                            <dd class="col-sm-8" id="userDetailsEmail"></dd>
+                            <dt class="col-sm-4">Date d'inscription</dt>
+                            <dd class="col-sm-8" id="userDetailsCreated"></dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Statistiques</h6>
+                        <dl class="row">
+                            <dt class="col-sm-4">Fichiers traités</dt>
+                            <dd class="col-sm-8" id="userDetailsFiles"></dd>
+                            <dt class="col-sm-4">Points extraits</dt>
+                            <dd class="col-sm-8" id="userDetailsPoints"></dd>
+                            <dt class="col-sm-4">Dernière activité</dt>
+                            <dd class="col-sm-8" id="userDetailsLastActivity"></dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <h6>Activité récente</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                    <th>Détails</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userDetailsActivity">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Exporter les données</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Type de données</label>
+                    <select class="form-select" id="exportType">
+                        <option value="users">Utilisateurs</option>
+                        <option value="files">Fichiers</option>
+                        <option value="activity">Journal d'activité</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Format</label>
+                    <select class="form-select" id="exportFormat">
+                        <option value="csv">CSV</option>
+                        <option value="xlsx">Excel</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Période</label>
+                    <select class="form-select" id="exportPeriod">
+                        <option value="all">Toutes les données</option>
+                        <option value="month">30 derniers jours</option>
+                        <option value="week">7 derniers jours</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="exportData()">Exporter</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Charger les statistiques admin
+async function loadAdminStats() {
+    try {
+        const response = await fetch('/api/stats/admin');
+        const data = await response.json();
+        
+        // Mettre à jour les statistiques
+        document.getElementById('total_users').textContent = data.total_users;
+        document.getElementById('success_rate').textContent = data.success_rate + '%';
+        document.getElementById('error_files').textContent = data.error_files;
+        document.getElementById('total_files').textContent = data.total_files;
+    } catch (error) {
+        console.error('Error:', error);
+        showMessage('Erreur lors du chargement des statistiques', 'danger');
+    }
+}
+
+// Charger les statistiques au chargement de la page
+document.addEventListener('DOMContentLoaded', function() {
+    loadAdminStats();
+    // Recharger les statistiques toutes les 30 secondes
+    setInterval(loadAdminStats, 30000);
+});
+
+// Search functionality
+document.getElementById('userSearch').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const tbody = document.querySelector('.table tbody');
+    const rows = tbody.getElementsByTagName('tr');
+    
+    for (let row of rows) {
+        const email = row.cells[1].textContent.toLowerCase();
+        
+        if (email.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+});
+
+// Add user
+async function handleAddUser(event) {
+    event.preventDefault();
+    
+    const formData = {
+        email: document.getElementById('userEmail').value,
+        password: document.getElementById('userPassword').value,
+        role: 'user'
+    };
+    
+    try {
+        const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            const data = await response.json();
+            alert(data.message || 'Une erreur est survenue');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+
+// Edit user
+async function editUser(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}`);
+        const user = await response.json();
+        
+        document.getElementById('editUserId').value = user.id;
+        document.getElementById('editUserEmail').value = user.email;
+        document.getElementById('editUserPassword').value = '';
+        
+        new bootstrap.Modal(document.getElementById('editUserModal')).show();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+
+async function handleEditUser(event) {
+    event.preventDefault();
+    
+    const userId = document.getElementById('editUserId').value;
+    const formData = {
+        email: document.getElementById('editUserEmail').value
+    };
+    
+    const password = document.getElementById('editUserPassword').value;
+    if (password) {
+        formData.password = password;
+    }
+    
+    try {
+        const response = await fetch(`/api/users/${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            const data = await response.json();
+            alert(data.message || 'Une erreur est survenue');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+
+// View user details
+async function viewUserDetails(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}`);
+        const user = await response.json();
+        
+        document.getElementById('userDetailsEmail').textContent = user.email;
+        document.getElementById('userDetailsCreated').textContent = user.created_at;
+        document.getElementById('userDetailsFiles').textContent = user.processed_files;
+        document.getElementById('userDetailsPoints').textContent = user.points_extracted;
+        document.getElementById('userDetailsLastActivity').textContent = user.last_activity || 'Jamais';
+        
+        const activityTable = document.getElementById('userDetailsActivity');
+        activityTable.innerHTML = '';
+        
+        for (const activity of user.activities) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${activity.date}</td>
+                <td>${activity.action}</td>
+                <td>${activity.details}</td>
+            `;
+            activityTable.appendChild(row);
+        }
+        
+        new bootstrap.Modal(document.getElementById('userDetailsModal')).show();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+
+// Export data
+async function exportData() {
+    const exportType = document.getElementById('exportType').value;
+    const exportFormat = document.getElementById('exportFormat').value;
+    const exportPeriod = document.getElementById('exportPeriod').value;
+    
+    try {
+        const response = await fetch(`/api/export/${exportType}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                format: exportFormat,
+                period: exportPeriod
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const blob = new Blob([data], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `export.${exportFormat}`;
+            a.click();
+        } else {
+            const data = await response.json();
+            alert(data.message || 'Une erreur est survenue');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+</script>
+<script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
+{% endblock %}

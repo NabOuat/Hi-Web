@@ -1,0 +1,396 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord Superadmin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Tableau de bord Superadmin</h1>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                <i class="bi bi-person-plus"></i> Ajouter un utilisateur
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDirectoryModal">
+                <i class="bi bi-folder-plus"></i> Ajouter un répertoire
+            </button>
+        </div>
+    </div>
+    
+    <!-- Statistics Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-people fs-1 text-primary"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Utilisateurs totaux</h6>
+                            <h2 class="card-title mb-0">{{ total_users }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-person-check fs-1 text-success"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Utilisateurs actifs</h6>
+                            <h2 class="card-title mb-0">{{ active_users }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-folder fs-1 text-warning"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Répertoires</h6>
+                            <h2 class="card-title mb-0">{{ total_directories }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-file-earmark-text fs-1 text-info"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-muted">Fichiers traités</h6>
+                            <h2 class="card-title mb-0">{{ processed_files }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Users and Directories Tables -->
+    <div class="row g-4">
+        <!-- Users Table -->
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Utilisateurs</h5>
+                    <div class="input-group" style="width: 300px;">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="userSearch" placeholder="Rechercher un utilisateur...">
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Rôle</th>
+                                    <th>Répertoire</th>
+                                    <th>Statut</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>{{ user.email }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ user.role_color }}">{{ user.role }}</span>
+                                    </td>
+                                    <td>{{ user.directory }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if user.is_active else 'danger' }}">
+                                            {{ 'Actif' if user.is_active else 'Inactif' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="editUser('{{ user.id }}')"
+                                                    title="Modifier">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" 
+                                                    onclick="deleteUser('{{ user.id }}')"
+                                                    title="Supprimer">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Directories Table -->
+        <div class="col-12 col-xl-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Répertoires</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Nom</th>
+                                    <th>Utilisateurs</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for directory in directories %}
+                                <tr>
+                                    <td>{{ directory.name }}</td>
+                                    <td>{{ directory.user_count }}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="editDirectory('{{ directory.id }}')"
+                                                    title="Modifier">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" 
+                                                    onclick="deleteDirectory('{{ directory.id }}')"
+                                                    title="Supprimer">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ajouter un utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addUserForm" onsubmit="return handleAddUser(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="userEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="userEmail" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="userPassword" class="form-label">Mot de passe</label>
+                        <input type="password" class="form-control" id="userPassword" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="userRole" class="form-label">Rôle</label>
+                        <select class="form-select" id="userRole" required>
+                            <option value="user">Utilisateur</option>
+                            <option value="admin">Admin</option>
+                            <option value="superadmin">Superadmin</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="userDirectory" class="form-label">Répertoire</label>
+                        <select class="form-select" id="userDirectory" required>
+                            {% for directory in directories %}
+                            <option value="{{ directory.id }}">{{ directory.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Directory Modal -->
+<div class="modal fade" id="addDirectoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ajouter un répertoire</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addDirectoryForm" onsubmit="return handleAddDirectory(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="directoryName" class="form-label">Nom du répertoire</label>
+                        <input type="text" class="form-control" id="directoryName" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Search functionality
+document.getElementById('userSearch').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const tbody = document.querySelector('.table tbody');
+    const rows = tbody.getElementsByTagName('tr');
+    
+    for (let row of rows) {
+        const email = row.cells[0].textContent.toLowerCase();
+        const role = row.cells[1].textContent.toLowerCase();
+        const directory = row.cells[2].textContent.toLowerCase();
+        
+        if (email.includes(searchTerm) || role.includes(searchTerm) || directory.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+});
+
+// Add user
+async function handleAddUser(event) {
+    event.preventDefault();
+    
+    const formData = {
+        email: document.getElementById('userEmail').value,
+        password: document.getElementById('userPassword').value,
+        role: document.getElementById('userRole').value,
+        directory_id: document.getElementById('userDirectory').value
+    };
+    
+    try {
+        const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            const data = await response.json();
+            alert(data.message || 'Une erreur est survenue');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+
+// Add directory
+async function handleAddDirectory(event) {
+    event.preventDefault();
+    
+    const formData = {
+        name: document.getElementById('directoryName').value
+    };
+    
+    try {
+        const response = await fetch('/api/directories', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            const data = await response.json();
+            alert(data.message || 'Une erreur est survenue');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    }
+}
+
+// Edit user
+async function editUser(userId) {
+    // Implement edit user functionality
+}
+
+// Delete user
+async function deleteUser(userId) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+        try {
+            const response = await fetch(`/api/users/${userId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                location.reload();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Une erreur est survenue');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Une erreur est survenue');
+        }
+    }
+}
+
+// Edit directory
+async function editDirectory(directoryId) {
+    // Implement edit directory functionality
+}
+
+// Delete directory
+async function deleteDirectory(directoryId) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer ce répertoire ?')) {
+        try {
+            const response = await fetch(`/api/directories/${directoryId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                location.reload();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Une erreur est survenue');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Une erreur est survenue');
+        }
+    }
+}
+</script>
+{% endblock %}

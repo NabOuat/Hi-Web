@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: hi-web
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --timeout 300 --workers 4
+    plan: standard
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.12
+      - key: PORT
+        value: 10000
+      - key: FLASK_ENV
+        value: production
+      - key: SUPABASE_URL
+        value: https://rjksrjvidvoizpawozha.supabase.co
+      - key: SUPABASE_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqa3NyanZpZHZvaXpwYXdvemhhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNzEwNzQyMCwiZXhwIjoyMDUyNjgzNDIwfQ.Igsskf2JWe0ZVwg8oQ_vOiSE5VSt_1gEKXJLeSVmCik
+      - key: SECRET_KEY
+        value: hiconvert_secret_key_2024
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqa3NyanZpZHZvaXpwYXdvemhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcxMDc0MjAsImV4cCI6MjA1MjY4MzQyMH0.ROma2pmwHv-lxta5h5PCpvFY9oAkJdq3iC1Wluian80
+    autoDeploy: true
+    healthCheckPath: /
+    disk:
+      name: hi-web-data
+      mountPath: /tmp
+      sizeGB: 1
