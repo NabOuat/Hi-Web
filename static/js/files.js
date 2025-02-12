@@ -193,14 +193,32 @@ async function startProcessing() {
                 console.log('Envoi de la requête...', data.path);
                 const response = await fetch('/api/process', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    timeout: 300000 // 5 minutes timeout
                 });
 
-                const result = await response.json();
-                console.log('Résultat reçu:', result);
+                // Vérifier d'abord le statut HTTP
+                if (!response.ok) {
+                    throw new Error(`Erreur HTTP: ${response.status}`);
+                }
 
-                if (!response.ok || result.status === 'error') {
-                    throw new Error(result.error || `Erreur HTTP: ${response.status}`);
+                // Vérifier que la réponse n'est pas vide
+                const text = await response.text();
+                if (!text) {
+                    throw new Error('Réponse vide du serveur');
+                }
+
+                // Parser le JSON
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (e) {
+                    console.error('Erreur de parsing JSON:', text);
+                    throw new Error('Réponse invalide du serveur');
+                }
+
+                if (result.status === 'error') {
+                    throw new Error(result.error || 'Erreur inconnue');
                 }
 
                 processedResults.set(folderPath, {

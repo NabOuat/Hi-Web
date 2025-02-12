@@ -400,64 +400,86 @@ def logout():
 def process():
     """Traite un fichier PDF"""
     temp_path = None
+    file_id = None
     try:
-        print("Début du traitement")
-        print("Headers:", request.headers)
-        print("Form data:", request.form)
-        print("Files:", request.files)
+        logger = logging.getLogger(__name__)
+        logger.info("Début du traitement")
+        logger.info(f"Headers: {request.headers}")
+        logger.info(f"Form data: {request.form}")
+        logger.info(f"Files: {request.files}")
         
         if 'file' not in request.files:
-            return jsonify({'error': 'Aucun fichier reçu'}), 400
+            return jsonify({
+                'status': 'error',
+                'error': 'Aucun fichier reçu'
+            }), 400
             
         file = request.files['file']
         if not file or file.filename == '':
-            return jsonify({'error': 'Nom de fichier invalide'}), 400
+            return jsonify({
+                'status': 'error',
+                'error': 'Nom de fichier invalide'
+            }), 400
             
         folder_name = request.form.get('folderName')
         if not folder_name:
-            return jsonify({'error': 'Nom de dossier manquant'}), 400
+            return jsonify({
+                'status': 'error',
+                'error': 'Nom de dossier manquant'
+            }), 400
             
-        print(f"Traitement du fichier {file.filename} du dossier {folder_name}")
+        logger.info(f"Traitement du fichier {file.filename} du dossier {folder_name}")
         
         # Créer un ID unique pour ce fichier
         file_id = str(uuid.uuid4())
-        print(f"ID généré: {file_id}")
+        logger.info(f"ID généré: {file_id}")
         
         # Créer un dossier spécifique pour ce fichier
         output_dir = os.path.join(app.config['OUTPUT_FOLDER'], file_id)
         os.makedirs(output_dir, exist_ok=True)
-        print(f"Dossier de sortie créé: {output_dir}")
+        logger.info(f"Dossier de sortie créé: {output_dir}")
         
         # Créer un fichier temporaire avec une extension .pdf
         temp_path = os.path.join(output_dir, "input.pdf")
-        print(f"Fichier temporaire créé: {temp_path}")
+        logger.info(f"Fichier temporaire créé: {temp_path}")
         
         try:
             # Lire le contenu du fichier pour obtenir sa taille
             file_content = file.read()
             file_size = len(file_content)
             
-            # Upload le fichier PDF vers Supabase
-            print("Upload du fichier PDF vers Supabase...")
-            upload_pdf_to_supabase(file_id, file_content, session.get('user_id'), folder_name)
-            print("Upload du fichier PDF terminé")
+            # Upload le fichier PDF vers Supabase avec retry
+            max_retries = 3
+            retry_count = 0
+            while retry_count < max_retries:
+                try:
+                    logger.info("Upload du fichier PDF vers Supabase...")
+                    upload_pdf_to_supabase(file_id, file_content, session.get('user_id'), folder_name)
+                    logger.info("Upload du fichier PDF terminé")
+                    break
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count == max_retries:
+                        raise
+                    logger.warning(f"Tentative {retry_count} échouée: {str(e)}")
+                    time.sleep(1)  # Attendre 1 seconde avant de réessayer
             
             # Réinitialiser le curseur du fichier pour pouvoir le sauvegarder
             file.seek(0)
             file.save(temp_path)
-            print(f"Fichier sauvegardé: {temp_path}")
+            logger.info(f"Fichier sauvegardé: {temp_path}")
             
             # Créer l'entrée dans la base de données
             user_id = session.get('user_id')
             directory_id = request.form.get('directoryId')
             
             file_data = {
-                'id': file_id,  # Utiliser l'ID généré
+                'id': file_id,
                 'name': file.filename,
                 'status': 'processing',
                 'user_id': user_id,
                 'directory_id': directory_id,
-                'filename': f"{file_id}.csv",  # Stocker le nom du fichier CSV
+                'filename': f"{file_id}.csv",
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'updated_at': datetime.now(timezone.utc).isoformat(),
                 'original_path': temp_path,
@@ -465,37 +487,36 @@ def process():
                 'mime_type': file.content_type or 'application/pdf'
             }
             
-            print("Insertion dans la base de données:", file_data)
+            logger.info("Insertion dans la base de données: %s", file_data)
             response = supabase.table('files').insert(file_data).execute()
-            print("Réponse de la base de données:", response.data)
+            logger.info("Réponse de la base de données: %s", response.data)
             
-            # Traiter le PDF
+            # Traiter le PDF avec timeout
             csv_path, result = process_pdf(temp_path, file_id, output_dir)
             
             if csv_path is None:
-                # Mettre à jour le statut en erreur
                 error_data = {
                     'status': 'error',
                     'processed_at': datetime.now(timezone.utc).isoformat()
                 }
-                print("Mise à jour du statut en erreur:", error_data)
+                logger.error("Erreur de traitement PDF: %s", result)
                 supabase.table('files')\
                     .update(error_data)\
                     .eq('id', file_id)\
                     .execute()
                     
                 return jsonify({
-                    'error': result,
-                    'status': 'error'
+                    'status': 'error',
+                    'error': result
                 }), 500
             
             # Mettre à jour le statut en succès
             success_data = {
                 'status': 'success',
-                'points': len(result),  # Stocker le nombre de points
+                'points': len(result),
                 'processed_at': datetime.now(timezone.utc).isoformat()
             }
-            print("Mise à jour du statut en succès:", success_data)
+            logger.info("Mise à jour du statut en succès: %s", success_data)
             supabase.table('files')\
                 .update(success_data)\
                 .eq('id', file_id)\
@@ -509,15 +530,43 @@ def process():
             })
             
         except Exception as e:
-            print(f"Erreur lors du traitement: {str(e)}")
-            raise
+            logger.error(f"Erreur lors du traitement: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            if file_id:
+                error_data = {
+                    'status': 'error',
+                    'error_message': str(e),
+                    'processed_at': datetime.now(timezone.utc).isoformat()
+                }
+                try:
+                    supabase.table('files')\
+                        .update(error_data)\
+                        .eq('id', file_id)\
+                        .execute()
+                except Exception as db_error:
+                    logger.error(f"Erreur lors de la mise à jour du statut: {str(db_error)}")
+            
+            return jsonify({
+                'status': 'error',
+                'error': str(e)
+            }), 500
             
     except Exception as e:
-        print(f"Erreur lors du traitement: {str(e)}")
+        logger.error(f"Erreur globale: {str(e)}")
+        logger.error(traceback.format_exc())
+        
         if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
-            print(f"Fichier temporaire supprimé: {temp_path}")
-        return jsonify({'error': str(e)}), 500
+            try:
+                os.remove(temp_path)
+                logger.info(f"Fichier temporaire supprimé: {temp_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Erreur lors de la suppression du fichier temporaire: {str(cleanup_error)}")
+        
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 @app.route('/api/files/<file_id>/download', methods=['GET'])
 @login_required
